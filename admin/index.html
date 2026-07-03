@@ -11,16 +11,18 @@
 <style>
 /* ── Variables ─────────────────────────────────────────────── */
 :root {
-  --bg:        #F7F4F0;
-  --bg2:       #EFEBE4;
-  --bg3:       #E6E0D6;
+  --bg:        #F4F5F1;
+  --bg2:       #EAECE5;
+  --bg3:       #DFE2D9;
   --panel:     #FFFFFF;
-  --border:    #DDD8CF;
-  --text:      #1C1916;
-  --text2:     #5C564E;
-  --text3:     #9C9389;
-  --accent:    #C0532A;
-  --accent-bg: #F9EDE7;
+  --border:    #D6DACF;
+  --text:      #181A17;
+  --text2:     #535A51;
+  --text3:     #929A8F;
+  --accent:        #2E6B4E;
+  --accent-bg:     #E8EEEB;
+  --accent-border: #A9CBB6;
+  --accent-hover:  #D7E7DD;
   --green:     #3A7D44;
   --green-bg:  #E8F4EA;
   --blue:      #1A5FA8;
@@ -35,7 +37,7 @@
   --radius-sm: 5px;
   --shadow:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
   --font:      'Sora', sans-serif;
-  --sidebar-w: 280px;
+  --sidebar-w: 380px;
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -207,13 +209,19 @@ a { color: inherit; text-decoration: none; }
 }
 .pill.active {
   background: var(--accent-bg);
-  border-color: #E8A485;
+  border-color: var(--accent-border);
   color: var(--accent);
   font-weight: 500;
 }
 .pill-sep {
   margin: 0 3px;
   opacity: 0.4;
+}
+.pill-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 2px 1px;
 }
 .pill-count {
   font-size: 10px;
@@ -245,13 +253,21 @@ a { color: inherit; text-decoration: none; }
   padding-left: 11px;
 }
 .ref-item-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+.ref-id-tags {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 2px;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .ref-num { font-size: 13px; font-weight: 600; color: var(--text); }
-.ref-date { font-size: 11px; color: var(--text3); }
+.ref-date { font-size: 11px; color: var(--text3); white-space: nowrap; justify-self: end; }
 .ref-name { font-size: 13px; color: var(--text); margin-bottom: 1px; }
 .ref-org  { font-size: 11px; color: var(--text3); margin-bottom: 5px; }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -268,6 +284,7 @@ a { color: inherit; text-decoration: none; }
 .tag-gathered   { background: var(--purple-bg); color: var(--purple); }
 .tag-completed  { background: var(--green-bg);  color: var(--green); }
 .tag-cancelled  { background: var(--red-bg);    color: var(--red); }
+.tag-rejected   { background: var(--bg3);        color: var(--text2); }
 .tag-crisis     { background: var(--bg2);        color: var(--text2); }
 .tag-vuln       { background: var(--red-bg);    color: var(--red); }
 
@@ -314,7 +331,11 @@ a { color: inherit; text-decoration: none; }
   color: var(--text);
   transition: background .12s;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
+.btn svg { flex-shrink: 0; }
 .btn:hover { background: var(--bg2); }
 .btn-maps { background: var(--blue-bg); border-color: #B5CEFF; color: var(--blue); }
 .btn-maps:hover { background: #D8E8FF; }
@@ -355,6 +376,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ── Cards ─────────────────────────────────────────────────── */
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -458,12 +480,13 @@ a { color: inherit; text-decoration: none; }
   font-size: 12px;
   font-weight: 500;
   padding: 6px 16px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
   border-radius: var(--radius-sm);
-  transition: opacity .15s;
+  transition: background .15s;
 }
-.notes-save:hover { opacity: .85; }
+.notes-save:hover { background: var(--accent-hover); }
 
 /* ── Referral number inline edit ───────────────────────────── */
 .btn-edit-refnum {
@@ -479,6 +502,7 @@ a { color: inherit; text-decoration: none; }
   vertical-align: middle;
   margin-left: 5px;
 }
+.btn-edit-refnum { display: inline-flex; align-items: center; }
 .btn-edit-refnum:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ── Edit controls ─────────────────────────────────────────── */
@@ -696,7 +720,11 @@ a { color: inherit; text-decoration: none; }
   font-size: 12px;
   color: var(--red);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.cancelled-banner svg { flex-shrink: 0; }
 
 /* ── Loading ───────────────────────────────────────────────── */
 .loading {
@@ -706,24 +734,79 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
 }
 
-/* ── Mobile ────────────────────────────────────────────────── */
-@media (max-width: 700px) {
-  :root { --sidebar-w: 100vw; }
-  .app-body { flex-direction: column; }
-  .sidebar {
-    width: 100%;
-    min-width: 100%;
-    max-height: 50vh;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .detail { min-height: 50vh; }
-  .two-col { grid-template-columns: 1fr; }
-  .stat-row { grid-template-columns: 1fr 1fr; }
-  .detail-header { flex-direction: column; gap: 10px; }
-  .detail-actions { width: 100%; justify-content: flex-end; }
-  .ms-edit-label { width: 100px; }
+/* ── Mobile portrait mode (class-based, auto-detected) ─────── */
+/* Prevent iOS tap-zoom on inputs */
+body.mobile input,
+body.mobile textarea,
+body.mobile select { font-size: 16px; }
+
+body.mobile .app-header { height: 54px; padding: 0 14px; }
+body.mobile .app-logo { font-size: 16px; }
+body.mobile .user-email { display: none; }
+body.mobile .sign-out-btn { font-size: 13px; padding: 8px 13px; }
+
+body.mobile .app-body { position: relative; }
+
+/* Sidebar becomes the full-screen list */
+body.mobile .sidebar {
+  width: 100%; min-width: 100%; height: 100%; max-height: none;
+  border-right: none; border-bottom: none;
 }
+body.mobile .sidebar-top { padding: 12px 14px; gap: 10px; }
+body.mobile .search-input { padding: 11px 14px; }
+body.mobile #sort-btn { padding: 11px 14px !important; }
+
+/* Filters: horizontal swipe strip */
+body.mobile .filter-row {
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  margin: 0 -14px; padding: 2px 14px;
+}
+body.mobile .filter-row::-webkit-scrollbar { display: none; }
+body.mobile .pill { font-size: 13px; padding: 7px 13px; }
+body.mobile .pill-divider { margin: 2px 4px; }
+
+/* List rows: larger touch targets */
+body.mobile .ref-item { padding: 14px 16px; }
+body.mobile .ref-item.selected { padding-left: 13px; }
+body.mobile .ref-num, body.mobile .ref-name { font-size: 15px; }
+body.mobile .ref-org, body.mobile .ref-date { font-size: 12px; }
+body.mobile .tag { font-size: 11px; padding: 3px 9px; }
+
+/* Detail: full-screen pane, shown only after a referral is opened */
+body.mobile .detail { position: absolute; inset: 0; z-index: 30; display: none; }
+body.mobile.showing-detail .detail { display: flex; }
+body.mobile.showing-detail .sidebar { display: none; }
+
+/* Back bar (hidden on desktop) */
+.mobile-back { display: none; }
+body.mobile .mobile-back {
+  display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+  width: 100%; padding: 13px 16px;
+  background: var(--panel); border: none; border-bottom: 1px solid var(--border);
+  font-size: 14px; font-weight: 500; color: var(--accent);
+}
+body.mobile .mobile-back:active { background: var(--bg2); }
+
+body.mobile .detail-header { flex-direction: column; gap: 12px; padding: 14px 16px; }
+body.mobile .detail-header-left h2 { font-size: 19px; }
+body.mobile .detail-actions { width: 100%; flex-wrap: wrap; gap: 8px; justify-content: stretch; }
+body.mobile .detail-actions .btn { flex: 1 1 42%; justify-content: center; padding: 10px 12px; font-size: 13px; }
+body.mobile .detail-body { padding: 14px 16px 40px; gap: 14px; }
+
+body.mobile .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+body.mobile .stat { padding: 12px 14px; }
+body.mobile .stat span { font-size: 15px; }
+body.mobile .two-col, body.mobile .three-col { grid-template-columns: 1fr; gap: 14px; }
+body.mobile .card { padding: 16px; }
+body.mobile .field span, body.mobile .field a { font-size: 14px; }
+
+body.mobile .ms-edit-label { width: 110px; }
+body.mobile .action-buttons { gap: 8px; }
+body.mobile .action-buttons > button { flex: 1 1 42%; text-align: center; padding: 10px 12px; }
+
+/* Login card fits small screens */
+body.mobile .login-card { padding: 40px 26px; margin: 16px; }
 </style>
 </head>
 <body>
@@ -743,7 +826,7 @@ a { color: inherit; text-decoration: none; }
 <!-- ── App ────────────────────────────────────────────────── -->
 <div id="app">
   <header class="app-header">
-    <div class="app-logo">Hidden Help</div>
+    <div class="app-logo">Hidden Help Admin</div>
     <span id="user-email" class="user-email"></span>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
@@ -759,11 +842,14 @@ a { color: inherit; text-decoration: none; }
         <div class="filter-row">
           <button class="pill active" data-filter="all">All</button>
           <button class="pill" data-filter="active">Active</button>
+          <span class="pill-divider" title="Filters below are exclusive — only one applies at a time"></span>
           <button class="pill" data-filter="delivery">Delivery</button>
           <button class="pill" data-filter="collection">Collection</button>
+          <span class="pill-divider" title="Filters below are exclusive — only one applies at a time"></span>
           <button class="pill" data-filter="awaiting-wishlist">Awaiting wishlist</button>
           <button class="pill" data-filter="completed">Completed</button>
           <button class="pill" data-filter="cancelled">Cancelled</button>
+          <button class="pill" data-filter="rejected">Rejected</button>
         </div>
       </div>
       <div id="ref-list" class="ref-list">
@@ -796,9 +882,21 @@ const WISHLIST_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSej2Tb1f1qxZ
 let editingSection  = null;  // 'milestones' | 'payment' | null
 let editingRefNum   = false;
 let showCancelForm  = false;
+let cancelFormType  = 'cancelled';  // 'cancelled' | 'rejected'
 let showConvertForm = false;
 let showWishlist    = false;
 let volunteers     = [];
+
+// ── Icons (monoline SVG, inherit button text colour) ────────
+const ICONS = {
+  copy:    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12.5" rx="2"/><path d="M16 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2.5"/></svg>',
+  check:   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  list:    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
+  map:     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10.5c0 5.5-8 11-8 11s-8-5.5-8-11a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10.5" r="2.8"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3.5v6h-6"/></svg>',
+  pencil:  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  warn:    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17.5" x2="12.01" y2="17.5"/></svg>',
+};
 
 // ── Auth ────────────────────────────────────────────────────
 async function initAuth() {
@@ -882,7 +980,7 @@ async function loadVolunteers() {
 }
 
 function deriveStatus(r) {
-  if (r.cancelled_at)          return 'cancelled';
+  if (r.cancelled_at)          return r.cancellation_type === 'rejected' ? 'rejected' : 'cancelled';
   if (r.completed_at)          return 'completed';
   if (r.gathered_at)           return 'gathered';
   if (r.wishlist_submitted_at) return 'awaiting gathering';
@@ -929,12 +1027,13 @@ function filterReferrals() {
     const q = searchQuery.toLowerCase();
 
     const matchesFilter = activeFilter === 'all'      ? true
-      : activeFilter === 'active'    ? !['completed','cancelled'].includes(status)
+      : activeFilter === 'active'    ? !['completed','cancelled','rejected'].includes(status)
       : activeFilter === 'delivery'   ? r.fulfilment_type === 'delivery'
       : activeFilter === 'collection' ? r.fulfilment_type === 'collection'
       : activeFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
       : activeFilter === 'completed' ? status === 'completed'
       : activeFilter === 'cancelled' ? status === 'cancelled'
+      : activeFilter === 'rejected' ? status === 'rejected'
       : true;
 
     const matchesSearch = !q || [
@@ -962,21 +1061,21 @@ function renderList() {
   }
   list.innerHTML = visible.map(r => {
     const status  = deriveStatus(r);
-    const name    = [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ') || '—';
+    const name    = clientName(r.clients);
     const org     = r.referrers?.organisation || r.referrers?.name || '';
     const isSelected = selectedRef?.referral_number === r.referral_number;
     return `
       <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.referral_number}">
         <div class="ref-item-top">
-          <span class="ref-num">#${r.referral_number}</span>
+          <div class="ref-id-tags">
+            <span class="ref-num">#${r.referral_number}</span>
+            <span class="tag tag-${r.fulfilment_type}">${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span>
+            <span class="tag tag-${statusKey(status)}">${statusLabel(status)}</span>
+          </div>
           <span class="ref-date">${fmtDate(r.received_at || r.created_at)}</span>
         </div>
         <div class="ref-name">${esc(name)}</div>
         ${org ? `<div class="ref-org">${esc(org)}</div>` : ''}
-        <div class="tags">
-          <span class="tag tag-${r.fulfilment_type}">${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span>
-          <span class="tag tag-${statusKey(status)}">${statusLabel(status)}</span>
-        </div>
       </div>`;
   }).join('');
 
@@ -989,15 +1088,22 @@ function renderList() {
 }
 
 function statusKey(s) {
-  return { 'completed': 'completed', 'cancelled': 'cancelled', 'gathered': 'gathered',
+  return { 'completed': 'completed', 'cancelled': 'cancelled', 'rejected': 'rejected', 'gathered': 'gathered',
            'awaiting gathering': 'gathered', 'awaiting wishlist': 'wishlist', 'new': 'new' }[s] || 'new';
 }
 function statusLabel(s) {
-  return { 'completed': 'Completed', 'cancelled': 'Cancelled', 'gathered': 'Gathered',
+  return { 'completed': 'Completed', 'cancelled': 'Cancelled', 'rejected': 'Rejected', 'gathered': 'Gathered',
            'awaiting gathering': 'Awaiting gathering', 'awaiting wishlist': 'Awaiting wishlist', 'new': 'New' }[s] || s;
 }
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function titleCase(s) {
+  return String(s).trim().replace(/\S+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+}
+function clientName(c) {
+  return [c?.first_name, c?.last_name].filter(Boolean).map(titleCase).join(' ') || '—';
 }
 
 function fmtPhone(s) {
@@ -1010,16 +1116,17 @@ function fmtPhone(s) {
 // ── Pill counts ─────────────────────────────────────────────
 function updatePillCounts() {
   const counts = { all: 0, active: 0, delivery: 0, collection: 0,
-                   'awaiting-wishlist': 0, completed: 0, cancelled: 0 };
+                   'awaiting-wishlist': 0, completed: 0, cancelled: 0, rejected: 0 };
   allReferrals.forEach(r => {
     const status = deriveStatus(r);
     counts.all++;
-    if (!['completed','cancelled'].includes(status)) counts.active++;
+    if (!['completed','cancelled','rejected'].includes(status)) counts.active++;
     if (r.fulfilment_type === 'delivery')   counts.delivery++;
     if (r.fulfilment_type === 'collection') counts.collection++;
     if (status === 'awaiting wishlist') counts['awaiting-wishlist']++;
     if (status === 'completed') counts.completed++;
     if (status === 'cancelled') counts.cancelled++;
+    if (status === 'rejected') counts.rejected++;
   });
   document.querySelectorAll('.pill[data-filter]').forEach(btn => {
     const key = btn.dataset.filter;
@@ -1084,6 +1191,11 @@ function selectReferral(r) {
   showWishlist    = false;
   renderList();
   renderDetail(r);
+  if (document.body.classList.contains('mobile')) {
+    document.body.classList.add('showing-detail');
+    const body = document.querySelector('#detail .detail-body');
+    if (body) body.scrollTop = 0;
+  }
 }
 
 function renderDetail(r) {
@@ -1091,11 +1203,15 @@ function renderDetail(r) {
   const status = deriveStatus(r);
   const client = r.clients || {};
   const ref    = r.referrers || {};
-  const name   = [client.first_name, client.last_name].filter(Boolean).join(' ') || '—';
+  const name   = clientName(client);
   const crises = crisisNames(r);
-  // free-text wishlist rows have category null — sort them last
-  const items  = (r.wishlist_items || []).sort((a,b) =>
-    (a.category || '~').localeCompare(b.category || '~') || a.description.localeCompare(b.description));
+  // wishlist_items with null category are free-text (form column EP), not real items —
+  // keep them out of the wishlist list and fold them into the referrer notes instead
+  const items  = (r.wishlist_items || []).filter(it => it.category)
+    .sort((a,b) => a.category.localeCompare(b.category) || a.description.localeCompare(b.description));
+  const wishFreeText = (r.wishlist_items || []).filter(it => !it.category)
+    .map(it => it.description).join('\n');
+  const referrerNotes = [r.referrer_notes, wishFreeText].filter(Boolean).join('\n');
 
   const mapsUrl = (client.latitude && client.longitude)
     ? `https://www.google.com/maps?q=${client.latitude},${client.longitude}`
@@ -1196,10 +1312,10 @@ function renderDetail(r) {
     <div class="action-card">
       <div class="action-card-title">Actions</div>
       ${showCancelForm ? `
-        <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:4px;">Cancellation reason (optional)</div>
-        <textarea id="cancel-reason" class="cancel-reason-area" placeholder="e.g. Client no longer needs help…"></textarea>
+        <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:4px;">${cancelFormType === 'rejected' ? 'Rejection reason (optional)' : 'Cancellation reason (optional)'}</div>
+        <textarea id="cancel-reason" class="cancel-reason-area" placeholder="${cancelFormType === 'rejected' ? "e.g. Doesn't meet eligibility criteria…" : 'e.g. Client no longer needs help…'}"></textarea>
         <div class="edit-actions">
-          <button class="btn-confirm-cancel" onclick="cancelReferral(${r.id})">Confirm cancel</button>
+          <button class="btn-confirm-cancel" onclick="cancelReferral(${r.id})">${cancelFormType === 'rejected' ? 'Confirm reject' : 'Confirm cancel'}</button>
           <button class="btn-cancel-edit" onclick="toggleCancelForm()">Back</button>
         </div>
       ` : showConvertForm ? `
@@ -1230,10 +1346,10 @@ function renderDetail(r) {
         </div>
       ` : `
         <div class="action-buttons">
-          ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm()">Cancel referral</button>` : ''}
+          ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('rejected')">Reject referral</button>` : ''}
+          ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('cancelled')">Cancel referral</button>` : ''}
           ${r.fulfilment_type === 'collection' && !r.cancelled_at ? `<button class="btn-do-convert" onclick="toggleConvertForm()">Convert to delivery</button>` : ''}
-          ${(r.completed_at || r.cancelled_at) ? `<button class="btn-do-uncomplete" onclick="uncompleteReferral(${r.id})">${r.cancelled_at ? 'Uncancel' : 'Unmark as completed'}</button>` : ''}
-          ${(!r.cancelled_at && !r.completed_at) ? `<span style="font-size:12px;color:var(--text3)">Mark gathered/completed via Telegram bot, or use milestone edit above.</span>` : ''}
+          ${(r.completed_at || r.cancelled_at) ? `<button class="btn-do-uncomplete" onclick="uncompleteReferral(${r.id})">${r.cancelled_at ? (r.cancellation_type === 'rejected' ? 'Unreject' : 'Uncancel') : 'Unmark as completed'}</button>` : ''}
           ${r.cancelled_at ? `<button class="btn-do-delete" onclick="deleteReferral(${r.id})">Delete referral</button>` : ''}
         </div>
       `}
@@ -1246,24 +1362,25 @@ function renderDetail(r) {
         <button class="btn-save-edit" onclick="saveRefNum(${r.id})" style="padding:3px 10px">✓</button>
         <button class="btn-cancel-edit" onclick="toggleEditRefNum()" style="padding:3px 8px">✕</button>
       </span>`
-    : `#${r.referral_number}<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">✎</button>`;
+    : `#${r.referral_number}<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">${ICONS.pencil}</button>`;
 
   panel.innerHTML = `
+    <button class="mobile-back" onclick="mobileBackToList()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>All referrals</span></button>
     <div class="detail-header">
       <div class="detail-header-left">
         <h2>${esc(name)} — ${refNumDisplay}</h2>
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at ? `<button class="btn" id="wishlist-link-btn" onclick="copyWishlistUrl(${r.referral_number})">📋 Copy wishlist link</button>` : ''}
-        ${r.wishlist_submitted_at ? `<a href="wishlist.html?ref=${r.referral_number}" target="_blank" class="btn">🗒 Wishlist</a>` : ''}
-        ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" class="btn btn-maps">📍 Maps</a>` : ''}
-        <button class="btn" onclick="refreshSelected()">↻ Refresh</button>
+        ${!r.wishlist_submitted_at && !r.cancelled_at ? `<button class="btn" id="wishlist-link-btn" onclick="copyWishlistUrl(${r.referral_number})">${ICONS.copy}<span>Copy wishlist link</span></button>` : ''}
+        ${r.wishlist_submitted_at ? `<a href="wishlist.html?ref=${r.referral_number}" target="_blank" class="btn">${ICONS.list}<span>Wishlist</span></a>` : ''}
+        ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Maps</span></a>` : ''}
+        <button class="btn" onclick="refreshSelected()">${ICONS.refresh}<span>Refresh</span></button>
       </div>
     </div>
     <div class="detail-body">
 
-      ${r.cancelled_at ? `<div class="cancelled-banner">⚠️ Cancelled${r.cancellation_reason ? ' · ' + esc(r.cancellation_reason) : ''}</div>` : ''}
+      ${r.cancelled_at ? `<div class="cancelled-banner">${ICONS.warn}<span>${r.cancellation_type === 'rejected' ? 'Rejected' : 'Cancelled'}${r.cancellation_reason ? ' · ' + esc(r.cancellation_reason) : ''}</span></div>` : ''}
 
       <div class="stat-row">
         <div class="stat"><label>Type</label><span>${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span></div>
@@ -1272,7 +1389,9 @@ function renderDetail(r) {
         <div class="stat"><label>Children</label><span>${r.children_count ?? (r.child_ages ? Object.values(r.child_ages).reduce((a,b) => a+b, 0) : '—')}</span></div>
       </div>
 
-      <div class="two-col">
+      ${(!r.cancelled_at && !r.completed_at) ? `<div style="font-size:12px;color:var(--text3);margin-top:-6px;">Mark gathered/completed via Telegram bot, or use the milestone edit below.</div>` : ''}
+
+      <div class="three-col">
         <div class="card">
           <div class="card-title">Client</div>
           <div class="field">
@@ -1296,20 +1415,20 @@ function renderDetail(r) {
             ${client.geocoded_address ? esc(client.geocoded_address).replace(/, /g,'<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
             ${client.geocode_partial ? '<div class="address-note">⚠️ Partial match — verify before delivery</div>' : ''}
           </div>
-          <div class="field"><label>Referrer</label><span>${esc(ref.name || '—')}${ref.phone ? ' · ' + fmtPhone(ref.phone) : ''}</span></div>
-          <div class="field"><label>Organisation</label><span>${esc(ref.organisation || '—')}</span></div>
-          ${ref.email ? `<div class="field"><label>Email</label><a href="mailto:${esc(ref.email)}">${esc(ref.email)}</a></div>` : ''}
-          ${r.referrer_notes ? `<div class="field"><label>Referrer notes</label><span style="white-space:pre-wrap">${esc(r.referrer_notes)}</span></div>` : ''}
         </div>` : `
+        <div class="card">
+          <div class="card-title">Collection instructions</div>
+          ${r.collection_instructions ? `<div class="address-box" style="white-space:pre-wrap">${esc(r.collection_instructions)}</div>` : '<div style="font-size:13px;color:var(--text3)">None recorded</div>'}
+        </div>`}
+
         <div class="card">
           <div class="card-title">Referrer</div>
           <div class="field"><label>Name</label><span>${esc(ref.name || '—')}</span></div>
           ${ref.organisation ? `<div class="field"><label>Organisation</label><span>${esc(ref.organisation)}</span></div>` : ''}
           ${ref.phone ? `<div class="field"><label>Phone</label><span>${fmtPhone(ref.phone)}</span></div>` : ''}
           ${ref.email ? `<div class="field"><label>Email</label><a href="mailto:${esc(ref.email)}">${esc(ref.email)}</a></div>` : ''}
-          ${r.collection_instructions ? `<div class="field"><label>Collection instructions</label><span style="white-space:pre-wrap">${esc(r.collection_instructions)}</span></div>` : ''}
-          ${r.referrer_notes ? `<div class="field"><label>Referrer notes</label><span style="white-space:pre-wrap">${esc(r.referrer_notes)}</span></div>` : ''}
-        </div>`}
+          ${referrerNotes ? `<div class="field"><label>Referrer notes</label><span style="white-space:pre-wrap">${esc(referrerNotes)}</span></div>` : ''}
+        </div>
       </div>
 
       <div class="two-col">
@@ -1378,8 +1497,9 @@ function toggleEdit(section) {
   renderDetail(selectedRef);
 }
 
-function toggleCancelForm() {
+function toggleCancelForm(type = 'cancelled') {
   showCancelForm  = !showCancelForm;
+  cancelFormType  = type;
   showConvertForm = false;
   renderDetail(selectedRef);
   if (showCancelForm) scrollActionsIntoView();
@@ -1411,7 +1531,7 @@ async function saveRefNum(id) {
   if (newNum === selectedRef?.referral_number) { toggleEditRefNum(); return; }
   const clash = allReferrals.find(x => x.referral_number === newNum && x.id !== id);
   if (clash) {
-    const clashName = [clash.clients?.first_name, clash.clients?.last_name].filter(Boolean).join(' ') || '—';
+    const clashName = clientName(clash.clients);
     alert(`Referral number ${newNum} is already assigned to ${clashName}. Choose a different number.`);
     return;
   }
@@ -1487,10 +1607,12 @@ async function savePayment(id) {
 
 async function cancelReferral(id) {
   const reason = document.getElementById('cancel-reason')?.value?.trim() || null;
+  const type   = cancelFormType;
   showCancelForm = false;
   await patchReferral(id, {
     cancelled_at:        new Date().toISOString(),
     cancellation_reason: reason,
+    cancellation_type:   type,
     completed_at:        null,
   });
 }
@@ -1520,14 +1642,15 @@ async function uncompleteReferral(id) {
     completed_at:        null,
     cancelled_at:        null,
     cancellation_reason: null,
+    cancellation_type:   null,
   });
 }
 
 async function deleteReferral(id) {
   const r = allReferrals.find(x => x.id === id);
   if (!r) return;
-  if (!r.cancelled_at) { alert('Only cancelled referrals can be deleted.'); return; }
-  const name = [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ') || '—';
+  if (!r.cancelled_at) { alert('Only cancelled or rejected referrals can be deleted.'); return; }
+  const name = clientName(r.clients);
   const rn   = r.referral_number;
   if (!confirm(`Permanently delete referral #${rn} (${name})?\n\nThis will remove all associated wishlist items and cannot be undone.`)) return;
   // Delete child rows first (no cascade on these FKs)
@@ -1574,8 +1697,8 @@ function copyWishlistUrl(referralNumber) {
   navigator.clipboard.writeText(url).then(() => {
     const btn = document.getElementById('wishlist-link-btn');
     if (btn) {
-      btn.textContent = '✓ Copied!';
-      setTimeout(() => { btn.textContent = '📋 Copy wishlist link'; }, 2000);
+      btn.innerHTML = ICONS.check + '<span>Copied!</span>';
+      setTimeout(() => { btn.innerHTML = ICONS.copy + '<span>Copy wishlist link</span>'; }, 2000);
     }
   });
 }
@@ -1588,6 +1711,27 @@ async function refreshSelected() {
   showConvertForm = false;
   await loadReferrals();
 }
+
+// ── Mobile portrait mode ────────────────────────────────────
+function isMobileViewport() {
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || window.matchMedia('(max-width: 768px)').matches
+    || /[?&]mobile\b/.test(location.search);   // manual override for testing
+}
+function applyMobileMode() {
+  const on = isMobileViewport();
+  document.body.classList.toggle('mobile', on);
+  if (!on) document.body.classList.remove('showing-detail');
+}
+function mobileBackToList() {
+  if (!confirmDiscard()) return;
+  editingSection = null; showCancelForm = false; showConvertForm = false;
+  document.body.classList.remove('showing-detail');
+  if (selectedRef) renderDetail(selectedRef);
+}
+applyMobileMode();
+let _mobResizeT;
+window.addEventListener('resize', () => { clearTimeout(_mobResizeT); _mobResizeT = setTimeout(applyMobileMode, 150); });
 
 // ── Boot ────────────────────────────────────────────────────
 initAuth();
