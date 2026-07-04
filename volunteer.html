@@ -26,7 +26,7 @@ body { padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:640
 button { font-family:var(--font); cursor:pointer; border:none; background:none; }
 a { color:inherit; text-decoration:none; }
 
-.top { display:flex; align-items:center; gap:10px; margin-bottom:14px; min-height:32px; }
+.top { display:flex; align-items:center; gap:10px; min-height:40px; position:sticky; top:0; z-index:10; background:var(--bg); padding:8px 0 10px; margin:0 0 6px; box-shadow:0 6px 8px -6px rgba(0,0,0,.06); }
 .back { font-size:15px; color:var(--accent); font-weight:500; }
 .top h1 { font-size:16px; font-weight:600; }
 .who { margin-left:auto; font-size:12px; color:var(--text3); }
@@ -53,7 +53,10 @@ a { color:inherit; text-decoration:none; }
 ul.items { list-style:none; }
 ul.items li { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--bg2); font-size:14px; }
 ul.items li:last-child { border-bottom:none; }
-ul.items .qty { color:var(--text3); }
+ul.items .qty { color:var(--text3); white-space:nowrap; padding-left:10px; }
+ul.items .i-cat { color:var(--text3); font-size:12px; }
+.wl-head { display:flex; justify-content:space-between; align-items:center; }
+.lnk { color:var(--accent); font-size:13px; font-weight:600; }
 
 .btn { display:block; width:100%; text-align:center; padding:13px; border-radius:var(--radius); font-size:15px; font-weight:600; margin-top:10px; border:1px solid transparent; }
 .btn-primary { background:var(--accent); color:#fff; }
@@ -67,6 +70,225 @@ ul.items .qty { color:var(--text3); }
 .list-row:last-child { border-bottom:none; }
 .list-row .r-ref { font-weight:600; color:var(--accent); min-width:52px; }
 .list-section h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--text3); margin:18px 0 4px; font-weight:600; }
+
+.msg { text-align:center; padding:40px 16px; color:var(--text2); }
+.hidden { display:none; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span id="back" class="back hidden" onclick="showList()">‹ All</span>
+  <h1 id="title">Hidden Help</h1>
+  <span id="who" class="who"></span>
+</div>
+
+<div id="content"><div class="msg">Loading…</div></div>
+
+<script>
+// All data goes through the volunteer-api edge function, which validates the
+// Telegram signature and does the DB work with the service role. Anon key is
+// only the gateway apikey (public by design).
+const SUPABASE_URL  = 'https://pokjjlvrtakarcnblljh.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_Tciww7ztWF4Nfqve_E_ZHg_TPlLgTlg';
+const API_URL = `${SUPABASE_URL}/functions/v1/volunteer-api`;
+
+const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  try { tg.disableVerticalSwipes(); } catch (_) {}   // stop accidental swipe-to-close while scrolling
+  tg.BackButton?.onClick(() => showList());           // native back → list, not close
+}
+const initData = tg?.initData || '';
+
+async function api(action, extra = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
+    body: JSON.stringify({ action, initData, ...extra }),
+  });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (data.volunteer) $who.textContent = data.volunteer.name;
+  return data;
+}
+
+const $content = document.getElementById('content');
+const $back    = document.getElementById('back');
+const $title   = document.getElementById('title');
+const $who     = document.getElementById('who');
+
+// ── helpers ─────────────────────────────────────────────────
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const errHtml = e => `<div class="msg">${e.message === 'unauthorized'
+  ? 'Please open this from the Hidden Help Telegram bot.'
+  : `Something went wrong.<br><small>${esc(e.message)}</small>`}</div>`;
+const firstName = c => (c?.first_name || (c?.last_name ? '' : '') || '').trim() || 'Client';
+const fullName  = c => [c?.first_name, c?.last_name].filter(Boolean).join(' ');
+const emoji     = r => r.fulfilment_type === 'delivery' ? '🚚' : '📦';
+
+function deriveStatus(r) {
+  if (r.cancelled_at)          return r.cancellation_type === 'rejected' ? 'rejected' : 'cancelled';
+  if (r.completed_at)          return 'completed';
+  if (r.gathered_at)           return 'gathered';
+  if (r.wishlist_submitted_at) return 'awaiting gathering';
+  if (r.received_at)           return 'awaiting wishlist';
+  return 'new';
+}
+
+// ── list view ───────────────────────────────────────────────
+async function showList() {
+  $back.classList.add('hidden');
+  tg?.BackButton?.hide();
+  $title.textContent = 'Active Referrals';
+  history.replaceState(null, '', location.pathname);
+  $content.innerHTML = '<div class="msg">Loading…</div>';
+  let rows;
+  try { rows = (await api('list')).referrals || []; }
+  catch (e) { $content.innerHTML = errHtml(e); return; }
+  const coll = rows.filter(r => r.fulfilment_type !== 'delivery');
+  const dels = rows.filter(r => r.fulfilment_type === 'delivery');
+  const section = (title, list) => !list.length ? '' :
+    `<div class="list-section"><h2>${title} (${list.length})</h2>` +
+    list.map(r => `<div class="list-row" onclick="openRef(${r.referral_number})">
+        <span>${emoji(r)}</span><span class="r-ref">${r.referral_number}</span>
+        <span>${esc(firstName(r.clients))}</span></div>`).join('') + '</div>';
+  $content.innerHTML = rows.length
+    ? `<div class="card">${section('Collections', coll)}${section('Deliveries', dels)}</div>`
+    : '<div class="msg">📋 No active referrals</div>';
+}
+
+function openRef(num) { history.pushState(null, '', `?ref=${num}`); showDetail(num); }
+
+// ── detail view ─────────────────────────────────────────────
+async function showDetail(num) {
+  tg?.BackButton?.show();
+  $content.innerHTML = '<div class="msg">Loading…</div>';
+  let r;
+  try { r = (await api('get', { ref: num })).referral; }
+  catch (e) { $content.innerHTML = errHtml(e); $back.classList.remove('hidden'); $title.textContent=''; return; }
+  if (!r) { $content.innerHTML = `<div class="msg">Referral ${esc(num)} not found.</div>`; $back.classList.remove('hidden'); $title.textContent=''; return; }
+  $back.classList.remove('hidden');
+  $title.textContent = '';
+  render(r);
+}
+
+function render(r) {
+  const c = r.clients || {};
+  const status = deriveStatus(r);
+  const isDelivery = r.fulfilment_type === 'delivery';
+  const cancelled = status === 'cancelled' || status === 'rejected';
+  const params = new URLSearchParams({
+    mode: isDelivery ? 'delivery' : 'collection',
+    ref: r.referral_number,
+    name: fullName(c),
+    number: c.phone || '',
+    lat: c.latitude ?? '', lon: c.longitude ?? ''
+  }).toString();
+  const hasGeo = c.latitude != null && c.longitude != null;
+
+  const items = (r.wishlist_items || []).filter(it => !it.free_text);
+  const flags = [];
+  if (c.vulnerable) flags.push('⚠︎ Vulnerable');
+  if (r.can_help_lift) flags.push('Can help lift');
+  const people = [
+    r.adults_count ? `${r.adults_count} adult${r.adults_count>1?'s':''}` : '',
+    r.children_count ? `${r.children_count} child${r.children_count>1?'ren':''}` : ''
+  ].filter(Boolean).join(', ');
+
+  $content.innerHTML = `
+    <div class="card">
+      <div class="hdr">
+        <span class="ref">#${r.referral_number}</span>
+        <span class="name">${esc(firstName(c))}</span>
+        <span class="tag tag-${isDelivery?'delivery':'collection'}" style="margin-left:auto">${isDelivery?'Delivery':'Collection'}</span>
+      </div>
+      <div class="flags">
+        <span class="tag tag-${statusKey(status)}">${status}</span>
+        ${people ? `<span class="flag" style="background:var(--bg3);color:var(--text2)">${people}</span>` : ''}
+        ${flags.map(f=>`<span class="flag">${esc(f)}</span>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Location</div>
+      ${(c.geocoded_address||c.address) ? `<div class="instr">${esc(c.geocoded_address||c.address)}${c.postcode?`<br>${esc(c.postcode)}`:''}</div>` : '<div class="instr" style="color:var(--text3)">No address recorded</div>'}
+      ${hasGeo ? `<a class="btn btn-secondary" href="https://www.google.com/maps?q=${c.latitude},${c.longitude}" target="_blank" rel="noopener">📍 Open in Maps</a>` : ''}
+    </div>
+
+    ${r.collection_instructions ? `<div class="card"><div class="card-label">${isDelivery?'Instructions':'Collection instructions'}</div><div class="instr">${esc(r.collection_instructions)}</div></div>` : ''}
+    ${r.client_notes ? `<div class="card"><div class="card-label">Client notes</div><div class="instr">${esc(r.client_notes)}</div></div>` : ''}
+
+    <div class="card">
+      <div class="wl-head">
+        <div class="card-label" style="margin-bottom:0">Wishlist${items.length?` (${items.length})`:''}</div>
+        ${items.length?`<button class="lnk" onclick="toggleWishlist(this)">Show</button>`:''}
+      </div>
+      ${items.length ? `<ul class="items hidden" id="wishlist" style="margin-top:8px">${items.map(it=>`<li><span>${esc(it.description)}${it.category?` <span class="i-cat">${esc(it.category)}</span>`:''}</span><span class="qty">${it.quantity&&it.quantity>1?'×'+it.quantity:''}</span></li>`).join('')}</ul>` : '<div class="instr" style="color:var(--text3)">No items listed</div>'}
+    </div>
+
+    <div class="card">
+      <div class="card-label">Contact client</div>
+      ${c.phone ? `
+        <div class="btn-grid">
+          <a class="btn btn-secondary" href="tel:${esc(c.phone)}">📞 Call</a>
+          <a class="btn btn-secondary" href="sms.html?${params}">💬 Text</a>
+        </div>
+        <a class="btn btn-secondary" href="eta.html?${params}">🕒 Send ETA</a>
+        ${c.client_secondary_contact ? `<div class="field" style="margin-top:10px"><label>Secondary contact</label><span>${esc(c.client_secondary_contact)}</span></div>` : ''}
+      ` : '<div class="instr" style="color:var(--text3)">No phone number</div>'}
+    </div>
+
+    ${cancelled ? '' : `
+    <div class="card">
+      <div class="card-label">Status</div>
+      ${r.gathered_at
+        ? `<button class="btn btn-done" disabled>✓ Gathered</button>`
+        : `<button class="btn btn-primary" onclick="markGathered(${r.id})">Mark gathered</button>`}
+      ${r.completed_at
+        ? `<button class="btn btn-done" disabled>✓ ${isDelivery?'Delivered':'Completed'}</button>`
+        : `<button class="btn ${r.gathered_at?'btn-primary':'btn-secondary'}" onclick="markCompleted(${r.id}, ${isDelivery})">Mark ${isDelivery?'delivered':'completed'}</button>`}
+    </div>`}
+  `;
+}
+
+function toggleWishlist(btn) {
+  const ul = document.getElementById('wishlist');
+  if (!ul) return;
+  btn.textContent = ul.classList.toggle('hidden') ? 'Show' : 'Hide';
+}
+
+function statusKey(s) {
+  return { completed:'completed', cancelled:'cancelled', rejected:'cancelled', gathered:'gathered',
+           'awaiting gathering':'gathered', 'awaiting wishlist':'new', new:'new' }[s] || 'new';
+}
+
+// ── writes ──────────────────────────────────────────────────
+async function markGathered(id) {
+  if (!confirm('Mark this referral as gathered?')) return;
+  try { const { referral } = await api('gathered', { id }); if (referral) render(referral); }
+  catch (e) { alert('Save failed: ' + e.message); }
+}
+async function markCompleted(id, isDelivery) {
+  if (!confirm(`Mark this referral as ${isDelivery ? 'delivered' : 'completed'}?`)) return;
+  try { const { referral } = await api('completed', { id }); if (referral) render(referral); }
+  catch (e) { alert('Save failed: ' + e.message); }
+}
+
+// ── boot ────────────────────────────────────────────────────
+(async () => {
+  if (!initData) { $content.innerHTML = '<div class="msg">Please open this from the Hidden Help Telegram bot.</div>'; return; }
+  const ref = new URLSearchParams(location.search).get('ref') || tg?.initDataUnsafe?.start_param;
+  if (ref) showDetail(ref); else showList();
+})();
+window.addEventListener('popstate', () => {
+  const ref = new URLSearchParams(location.search).get('ref');
+  if (ref) showDetail(ref); else showList();
+});
+</script>
+</body>
+</html>
 
 .msg { text-align:center; padding:40px 16px; color:var(--text2); }
 .hidden { display:none; }
