@@ -133,6 +133,12 @@
         if (window.Telegram && window.Telegram.WebApp) {
             Telegram.WebApp.ready();
             Telegram.WebApp.expand();
+            // Only when reached from another page (e.g. the volunteer app) — leaves
+            // the standalone bot flow, where this is the entry page, unchanged.
+            if (window.history.length > 1) {
+                Telegram.WebApp.BackButton.show();
+                Telegram.WebApp.BackButton.onClick(() => history.back());
+            }
         }
 
         const params  = new URLSearchParams(window.location.search);
