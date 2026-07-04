@@ -51,10 +51,10 @@ a { color:inherit; text-decoration:none; }
 .instr { font-size:14px; line-height:1.5; white-space:pre-wrap; }
 
 ul.items { list-style:none; }
-ul.items li { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--bg2); font-size:14px; }
+ul.items li { display:flex; justify-content:space-between; gap:12px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--bg2); font-size:14px; }
 ul.items li:last-child { border-bottom:none; }
-ul.items .qty { color:var(--text3); white-space:nowrap; padding-left:10px; }
-ul.items .i-cat { color:var(--text3); font-size:12px; }
+ul.items .i-qty { color:var(--text3); }
+ul.items .i-cat { color:var(--text3); font-size:12px; text-transform:capitalize; text-align:right; white-space:nowrap; }
 .wl-head { display:flex; justify-content:space-between; align-items:center; }
 .lnk { color:var(--accent); font-size:13px; font-weight:600; }
 
@@ -65,11 +65,13 @@ ul.items .i-cat { color:var(--text3); font-size:12px; }
 .btn:disabled { opacity:.55; cursor:default; }
 .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .btn-grid .btn { margin-top:0; }
+.btn svg { width:17px; height:17px; vertical-align:-3px; margin-right:7px; }
 
-.list-row { display:flex; align-items:center; gap:10px; padding:13px 4px; border-bottom:1px solid var(--bg2); font-size:16px; }
+.list-row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--bg2); font-size:16px; }
 .list-row:last-child { border-bottom:none; }
 .list-row .r-ref { font-weight:600; color:var(--accent); min-width:52px; }
-.list-section h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--text3); margin:18px 0 4px; font-weight:600; }
+.list-section h2 { font-size:15px; text-transform:uppercase; letter-spacing:.4px; color:var(--text); margin:22px 0 6px; font-weight:700; }
+.list-section:first-child h2 { margin-top:4px; }
 
 .msg { text-align:center; padding:40px 16px; color:var(--text2); }
 .hidden { display:none; }
@@ -77,10 +79,8 @@ ul.items .i-cat { color:var(--text3); font-size:12px; }
 </head>
 <body>
 
-<div class="top">
-  <span id="back" class="back hidden" onclick="showList()">‹ All</span>
+<div class="top" id="topbar">
   <h1 id="title">Hidden Help</h1>
-  <span id="who" class="who"></span>
 </div>
 
 <div id="content"><div class="msg">Loading…</div></div>
@@ -110,14 +110,12 @@ async function api(action, extra = {}) {
   });
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  if (data.volunteer) $who.textContent = data.volunteer.name;
   return data;
 }
 
 const $content = document.getElementById('content');
-const $back    = document.getElementById('back');
 const $title   = document.getElementById('title');
-const $who     = document.getElementById('who');
+const $top     = document.getElementById('topbar');
 
 // ── helpers ─────────────────────────────────────────────────
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -127,6 +125,18 @@ const errHtml = e => `<div class="msg">${e.message === 'unauthorized'
 const firstName = c => (c?.first_name || (c?.last_name ? '' : '') || '').trim() || 'Client';
 const fullName  = c => [c?.first_name, c?.last_name].filter(Boolean).join(' ');
 const emoji     = r => r.fulfilment_type === 'delivery' ? '🚚' : '📦';
+
+const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICON = {
+  pin:   svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>'),
+  phone: svg('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7 12 12 0 0 0 .6 2.6 2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.4 12 12 0 0 0 2.6.6A2 2 0 0 1 22 16.9Z"/>'),
+  msg:   svg('<path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/>'),
+  clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  check: svg('<path d="M20 6 9 17l-5-5"/>'),
+};
+const CAT_ORDER = { electrical:0, furniture:1, general:2 };
+const catRank = c => CAT_ORDER[String(c||'').toLowerCase()] ?? 3;
+function callClient(phone) { if (phone) window.location.href = 'tel:' + phone.replace(/[^+\d]/g, ''); }
 
 function deriveStatus(r) {
   if (r.cancelled_at)          return r.cancellation_type === 'rejected' ? 'rejected' : 'cancelled';
@@ -139,8 +149,8 @@ function deriveStatus(r) {
 
 // ── list view ───────────────────────────────────────────────
 async function showList() {
-  $back.classList.add('hidden');
   tg?.BackButton?.hide();
+  $top.style.display = '';
   $title.textContent = 'Active Referrals';
   history.replaceState(null, '', location.pathname);
   $content.innerHTML = '<div class="msg">Loading…</div>';
@@ -164,13 +174,12 @@ function openRef(num) { history.pushState(null, '', `?ref=${num}`); showDetail(n
 // ── detail view ─────────────────────────────────────────────
 async function showDetail(num) {
   tg?.BackButton?.show();
+  $top.style.display = 'none';
   $content.innerHTML = '<div class="msg">Loading…</div>';
   let r;
   try { r = (await api('get', { ref: num })).referral; }
-  catch (e) { $content.innerHTML = errHtml(e); $back.classList.remove('hidden'); $title.textContent=''; return; }
-  if (!r) { $content.innerHTML = `<div class="msg">Referral ${esc(num)} not found.</div>`; $back.classList.remove('hidden'); $title.textContent=''; return; }
-  $back.classList.remove('hidden');
-  $title.textContent = '';
+  catch (e) { $content.innerHTML = errHtml(e); return; }
+  if (!r) { $content.innerHTML = `<div class="msg">Referral ${esc(num)} not found.</div>`; return; }
   render(r);
 }
 
@@ -188,7 +197,9 @@ function render(r) {
   }).toString();
   const hasGeo = c.latitude != null && c.longitude != null;
 
-  const items = (r.wishlist_items || []).filter(it => !it.free_text);
+  const items = (r.wishlist_items || []).filter(it => !it.free_text)
+    .sort((a, b) => catRank(a.category) - catRank(b.category)
+      || String(a.description || '').localeCompare(String(b.description || ''), undefined, { sensitivity: 'base' }));
   const flags = [];
   if (c.vulnerable) flags.push('⚠︎ Vulnerable');
   if (r.can_help_lift) flags.push('Can help lift');
@@ -214,7 +225,7 @@ function render(r) {
     <div class="card">
       <div class="card-label">Location</div>
       ${(c.geocoded_address||c.address) ? `<div class="instr">${esc(c.geocoded_address||c.address)}${c.postcode?`<br>${esc(c.postcode)}`:''}</div>` : '<div class="instr" style="color:var(--text3)">No address recorded</div>'}
-      ${hasGeo ? `<a class="btn btn-secondary" href="https://www.google.com/maps?q=${c.latitude},${c.longitude}" target="_blank" rel="noopener">📍 Open in Maps</a>` : ''}
+      ${hasGeo ? `<a class="btn btn-secondary" href="https://www.google.com/maps?q=${c.latitude},${c.longitude}" target="_blank" rel="noopener">${ICON.pin} Open in Maps</a>` : ''}
     </div>
 
     ${r.collection_instructions ? `<div class="card"><div class="card-label">${isDelivery?'Instructions':'Collection instructions'}</div><div class="instr">${esc(r.collection_instructions)}</div></div>` : ''}
@@ -225,17 +236,17 @@ function render(r) {
         <div class="card-label" style="margin-bottom:0">Wishlist${items.length?` (${items.length})`:''}</div>
         ${items.length?`<button class="lnk" onclick="toggleWishlist(this)">Show</button>`:''}
       </div>
-      ${items.length ? `<ul class="items hidden" id="wishlist" style="margin-top:8px">${items.map(it=>`<li><span>${esc(it.description)}${it.category?` <span class="i-cat">${esc(it.category)}</span>`:''}</span><span class="qty">${it.quantity&&it.quantity>1?'×'+it.quantity:''}</span></li>`).join('')}</ul>` : '<div class="instr" style="color:var(--text3)">No items listed</div>'}
+      ${items.length ? `<ul class="items hidden" id="wishlist" style="margin-top:8px">${items.map(it=>`<li><span class="i-desc">${esc(it.description)}${it.quantity&&it.quantity>1?` <span class="i-qty">×${it.quantity}</span>`:''}</span>${it.category?`<span class="i-cat">${esc(it.category)}</span>`:''}</li>`).join('')}</ul>` : '<div class="instr" style="color:var(--text3)">No items listed</div>'}
     </div>
 
     <div class="card">
       <div class="card-label">Contact client</div>
       ${c.phone ? `
         <div class="btn-grid">
-          <a class="btn btn-secondary" href="tel:${esc(c.phone)}">📞 Call</a>
-          <a class="btn btn-secondary" href="sms.html?${params}">💬 Text</a>
+          <button class="btn btn-secondary" data-phone="${esc(c.phone)}" onclick="callClient(this.dataset.phone)">${ICON.phone} Call</button>
+          <a class="btn btn-secondary" href="sms.html?${params}">${ICON.msg} Text</a>
         </div>
-        <a class="btn btn-secondary" href="eta.html?${params}">🕒 Send ETA</a>
+        <a class="btn btn-secondary" href="eta.html?${params}">${ICON.clock} Send ETA</a>
         ${c.client_secondary_contact ? `<div class="field" style="margin-top:10px"><label>Secondary contact</label><span>${esc(c.client_secondary_contact)}</span></div>` : ''}
       ` : '<div class="instr" style="color:var(--text3)">No phone number</div>'}
     </div>
@@ -244,10 +255,10 @@ function render(r) {
     <div class="card">
       <div class="card-label">Status</div>
       ${r.gathered_at
-        ? `<button class="btn btn-done" disabled>✓ Gathered</button>`
+        ? `<button class="btn btn-done" disabled>${ICON.check} Gathered</button>`
         : `<button class="btn btn-primary" onclick="markGathered(${r.id})">Mark gathered</button>`}
       ${r.completed_at
-        ? `<button class="btn btn-done" disabled>✓ ${isDelivery?'Delivered':'Completed'}</button>`
+        ? `<button class="btn btn-done" disabled>${ICON.check} ${isDelivery?'Delivered':'Completed'}</button>`
         : `<button class="btn ${r.gathered_at?'btn-primary':'btn-secondary'}" onclick="markCompleted(${r.id}, ${isDelivery})">Mark ${isDelivery?'delivered':'completed'}</button>`}
     </div>`}
   `;
