@@ -2,155 +2,64 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Hidden Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ── Tokens (match Admin UI / volunteer app) ── */
+        :root {
+            --bg:#F4F5F1; --bg2:#EAECE5; --bg3:#DFE2D9; --panel:#FFFFFF; --border:#D6DACF;
+            --text:#181A17; --text2:#535A51; --text3:#929A8F;
+            --accent:#2E6B4E; --accent-bg:#E8EEEB; --accent-border:#A9CBB6;
+            --red:#9B2020;
+            --radius:8px; --radius-sm:5px;
+            --shadow:0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+            --font:'Sora', sans-serif;
+        }
+        *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+        html,body { font-family:var(--font); font-size:15px; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; }
+        body { padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
+        button { font-family:var(--font); cursor:pointer; border:none; background:none; }
+        a { color:inherit; text-decoration:none; }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            padding: 20px;
-            min-height: 100vh;
-        }
+        .header { margin-bottom:20px; }
+        .header-ref { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--text3); font-weight:600; margin-bottom:3px; }
+        .header-name { font-size:22px; font-weight:600; }
+        .header-number { font-size:14px; color:var(--text2); margin-top:3px; }
 
-        /* ── header ── */
-        .header {
-            margin-bottom: 24px;
-        }
-        .header-ref {
-            font-size: 13px;
-            color: var(--tg-theme-hint-color, #888);
-            margin-bottom: 2px;
-        }
-        .header-name {
-            font-size: 22px;
-            font-weight: 600;
-        }
-        .header-number {
-            font-size: 14px;
-            color: var(--tg-theme-hint-color, #888);
-            margin-top: 2px;
-        }
+        .option { display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--border); box-shadow:var(--shadow); border-radius:var(--radius); padding:16px; width:100%; text-align:left; margin-bottom:12px; color:var(--text); }
+        .option:active { background:var(--bg2); }
+        .option-icon { flex-shrink:0; width:40px; height:40px; border-radius:10px; background:var(--accent-bg); color:var(--accent); display:flex; align-items:center; justify-content:center; }
+        .option-icon svg { width:22px; height:22px; }
+        .option-title { font-size:16px; font-weight:600; margin-bottom:2px; }
+        .option-desc { font-size:13px; color:var(--text2); line-height:1.35; }
 
-        /* ── option buttons ── */
-        .option {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
-            border: none;
-            border-radius: 14px;
-            padding: 16px;
-            width: 100%;
-            text-align: left;
-            cursor: pointer;
-            margin-bottom: 10px;
-            color: var(--tg-theme-text-color, #000000);
-        }
-        .option:active { opacity: 0.75; }
-        .option-icon {
-            font-size: 26px;
-            flex-shrink: 0;
-            width: 36px;
-            text-align: center;
-        }
-        .option-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 2px;
-        }
-        .option-desc {
-            font-size: 13px;
-            color: var(--tg-theme-hint-color, #888);
-            line-height: 1.3;
-        }
+        .screen { display:none; }
+        .screen.active { display:block; }
 
-        /* ── action screens ── */
-        .screen { display: none; }
-        .screen.active { display: block; }
+        .back-btn { color:var(--accent); font-size:15px; font-weight:500; padding:0 0 16px; display:flex; align-items:center; gap:4px; }
 
-        .back-btn {
-            background: none;
-            border: none;
-            color: var(--tg-theme-link-color, #2481cc);
-            font-size: 15px;
-            padding: 0 0 18px 0;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
+        .card { background:var(--panel); border:1px solid var(--border); box-shadow:var(--shadow); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+        .card-label { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; font-weight:600; margin-bottom:8px; }
+        .card-text { font-size:15px; line-height:1.5; }
+        .card-meta { font-size:13px; color:var(--text2); margin-top:6px; }
 
-        .card {
-            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        .card-label {
-            font-size: 12px;
-            color: var(--tg-theme-hint-color, #888);
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            margin-bottom: 8px;
-        }
-        .card-text {
-            font-size: 15px;
-            line-height: 1.5;
-        }
-        .card-meta {
-            font-size: 13px;
-            color: var(--tg-theme-hint-color, #888);
-            margin-top: 6px;
-        }
+        .eta-time { font-size:38px; font-weight:600; color:var(--accent); margin-bottom:2px; }
+        .eta-mins { font-size:14px; color:var(--text2); }
 
-        .eta-time {
-            font-size: 36px;
-            font-weight: 700;
-            color: var(--tg-theme-link-color, #2481cc);
-            margin-bottom: 2px;
-        }
-        .eta-mins {
-            font-size: 14px;
-            color: var(--tg-theme-hint-color, #888);
-        }
+        .btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px; border-radius:var(--radius); font-size:15px; font-weight:600; text-align:center; margin-bottom:10px; border:1px solid transparent; }
+        .btn svg { width:18px; height:18px; }
+        .btn-primary { background:var(--accent); color:#fff; }
+        .btn-primary:active { opacity:.85; }
+        .btn-secondary { background:var(--panel); color:var(--text); border-color:var(--border); }
 
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        .btn-primary {
-            background: var(--tg-theme-button-color, #2481cc);
-            color: var(--tg-theme-button-text-color, #ffffff);
-        }
-        .btn-primary:active { opacity: 0.8; }
-        .btn-secondary {
-            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
-            color: var(--tg-theme-link-color, #2481cc);
-            border: 1px solid var(--tg-theme-link-color, #2481cc);
-        }
-
-        /* ── status (loading / error) ── */
-        .status {
-            text-align: center;
-            padding: 40px 10px;
-            font-size: 15px;
-            color: var(--tg-theme-hint-color, #888);
-        }
-        .status-icon { font-size: 40px; margin-bottom: 12px; }
-        .error-text { color: #cc0000; }
+        .status { text-align:center; padding:40px 10px; font-size:15px; color:var(--text2); }
+        .status-icon { display:flex; justify-content:center; margin-bottom:14px; color:var(--accent); }
+        .status-icon.warn { color:var(--red); }
+        .status-icon svg { width:40px; height:40px; }
+        .error-text { color:var(--red); }
     </style>
 </head>
 <body>
@@ -164,7 +73,7 @@
         </div>
 
         <button class="option" onclick="show('screen-message')">
-            <div class="option-icon">💬</div>
+            <div class="option-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/></svg></div>
             <div>
                 <div class="option-title">Send a message</div>
                 <div class="option-desc">Open messaging app — type your own</div>
@@ -172,7 +81,7 @@
         </button>
 
         <button class="option" onclick="show('screen-avail')">
-            <div class="option-icon">❓</div>
+            <div class="option-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4"/><path d="M12 17h.01"/></svg></div>
             <div>
                 <div class="option-title">Check availability</div>
                 <div class="option-desc" id="avail-desc"></div>
@@ -180,7 +89,7 @@
         </button>
 
         <button class="option" onclick="startETA()">
-            <div class="option-icon">🚗</div>
+            <div class="option-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
             <div>
                 <div class="option-title">Send ETA</div>
                 <div class="option-desc">Calculate your arrival time and text them</div>
@@ -196,7 +105,7 @@
             <div class="card-text" id="msg-name-display"></div>
             <div class="card-meta" id="msg-number-display"></div>
         </div>
-        <a id="bare-sms-btn" href="#" class="btn btn-primary">📱 Open messaging app</a>
+        <a id="bare-sms-btn" href="#" class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/></svg> Open messaging app</a>
     </div>
 
     <!-- ── SCREEN: availability ── -->
@@ -206,14 +115,14 @@
             <div class="card-label">Message preview</div>
             <div class="card-text" id="avail-message"></div>
         </div>
-        <a id="avail-sms-btn" href="#" class="btn btn-primary">📱 Send via messaging app</a>
+        <a id="avail-sms-btn" href="#" class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/></svg> Send via messaging app</a>
     </div>
 
     <!-- ── SCREEN: ETA (loading) ── -->
     <div id="screen-eta-loading" class="screen">
         <button class="back-btn" onclick="show('screen-main')">‹ Back</button>
         <div class="status">
-            <div class="status-icon">📍</div>
+            <div class="status-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
             <div>Getting your location…</div>
         </div>
     </div>
@@ -222,10 +131,10 @@
     <div id="screen-eta-error" class="screen">
         <button class="back-btn" onclick="show('screen-main')">‹ Back</button>
         <div class="status">
-            <div class="status-icon">⚠️</div>
+            <div class="status-icon warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
             <div id="eta-error-msg" class="error-text"></div>
         </div>
-        <button class="btn btn-secondary" onclick="startETA()">🔄 Try again</button>
+        <button class="btn btn-secondary" onclick="startETA()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> Try again</button>
     </div>
 
     <!-- ── SCREEN: ETA (result) ── -->
@@ -244,14 +153,14 @@
             <div class="card-label">Message preview</div>
             <div class="card-text" id="eta-message"></div>
         </div>
-        <a id="eta-sms-btn" href="#" class="btn btn-primary">📱 Send via messaging app</a>
-        <button class="btn btn-secondary" onclick="startETA()">🔄 Recalculate ETA</button>
+        <a id="eta-sms-btn" href="#" class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/></svg> Send via messaging app</a>
+        <button class="btn btn-secondary" onclick="startETA()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg> Recalculate ETA</button>
     </div>
 
     <!-- ── SCREEN: param error ── -->
     <div id="screen-param-error" class="screen">
         <div class="status">
-            <div class="status-icon">⚠️</div>
+            <div class="status-icon warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
             <div class="error-text">Missing parameters. Please use the button in the bot.</div>
         </div>
     </div>
