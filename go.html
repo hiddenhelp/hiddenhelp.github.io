@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hidden Help</title>
+<style>
+  body { font-family:'Sora',sans-serif; background:#F4F5F1; color:#181A17; text-align:center; padding:60px 20px; }
+  a.btn { display:inline-block; margin-top:20px; padding:14px 28px; background:#2E6B4E; color:#fff; border-radius:8px; text-decoration:none; font-weight:600; }
+  p { color:#535A51; font-size:15px; }
+</style>
+</head>
+<body>
+<p>Opening your messaging app…<br>If nothing happens, tap the button below.<br>You can then close this tab.</p>
+<a class="btn" id="go" href="#">Open Messages</a>
+<script>
+  // Bounce page: Telegram Mini Apps can't open sms: links directly, so the app
+  // sends users here (in Safari) with the sms: URL in the fragment.
+  const target = decodeURIComponent(location.hash.slice(1));
+  if (target.startsWith('sms:') || target.startsWith('tel:')) {
+    document.getElementById('go').href = target;   // fallback if auto-launch is blocked
+    location.replace(target);
+  }
+</script>
+</body>
+</html>
