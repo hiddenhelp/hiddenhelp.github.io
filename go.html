@@ -20,6 +20,9 @@
   if (target.startsWith('sms:') || target.startsWith('tel:')) {
     document.getElementById('go').href = target;   // fallback if auto-launch is blocked
     location.replace(target);
+    // Best-effort tidy-up when the user returns from Messages; iOS Safari
+    // often ignores close() on externally-opened tabs, hence the fallback text.
+    setTimeout(() => window.close(), 2000);
   }
 </script>
 </body>
