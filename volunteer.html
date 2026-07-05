@@ -67,10 +67,10 @@ ul.items .i-cat { color:var(--text3); font-size:12px; text-transform:capitalize;
 .btn-grid .btn { margin-top:0; }
 .btn svg { width:17px; height:17px; vertical-align:-3px; margin-right:7px; }
 
-.list-row { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--bg2); font-size:16px; }
+.list-row { display:flex; align-items:center; gap:10px; padding:4px; border-bottom:1px solid var(--bg2); font-size:16px; }
 .list-row:last-child { border-bottom:none; }
 .list-row .r-ref { font-weight:600; color:var(--accent); min-width:52px; }
-.list-section h2 { font-size:15px; text-transform:uppercase; letter-spacing:.4px; color:var(--text); margin:22px 0 6px; font-weight:700; }
+.list-section h2 { font-size:15px; text-transform:uppercase; letter-spacing:.4px; color:var(--text); margin:14px 0 4px; font-weight:700; }
 .list-section:first-child h2 { margin-top:4px; }
 
 .msg { text-align:center; padding:40px 16px; color:var(--text2); }
@@ -238,7 +238,10 @@ function render(r) {
     <div class="card">
       <div class="wl-head">
         <div class="card-label" style="margin-bottom:0">Wishlist${items.length?` (${items.length})`:''}</div>
-        ${items.length?`<button class="lnk" onclick="toggleWishlist(this)">Show</button>`:''}
+        <div>
+          ${items.length?`<button class="lnk" onclick="toggleWishlist(this)">Show</button>`:''}
+          <button class="lnk" onclick="openPdf(${r.referral_number})" style="margin-left:12px">PDF</button>
+        </div>
       </div>
       ${items.length ? `<ul class="items hidden" id="wishlist" style="margin-top:8px">${items.map(it=>`<li><span class="i-desc">${esc(it.description)}${it.quantity&&it.quantity>1?` <span class="i-qty">×${it.quantity}</span>`:''}</span>${it.category?`<span class="i-cat">${esc(it.category)}</span>`:''}</li>`).join('')}</ul>` : '<div class="instr" style="color:var(--text3)">No items listed</div>'}
     </div>
@@ -265,6 +268,12 @@ function render(r) {
         : `<button class="btn ${r.gathered_at?'btn-primary':'btn-secondary'}" onclick="markCompleted(${r.id}, ${isDelivery})">Mark ${isDelivery?'delivered':'completed'}</button>`}
     </div>`}
   `;
+}
+
+function openPdf(num) {
+  // Mini App webview can't display PDFs — open in Safari, auth via initData
+  const url = `${API_URL}?action=pdf&ref=${num}&initData=${encodeURIComponent(initData)}`;
+  if (tg) tg.openLink(url); else window.open(url, '_blank');
 }
 
 function toggleWishlist(btn) {
