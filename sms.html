@@ -177,6 +177,12 @@
             }
         }
 
+        // Telegram Mini App webview ignores tel:/sms: anchor taps — route via window.open
+        document.addEventListener('click', e => {
+            const a = e.target.closest('a[href^="tel:"], a[href^="sms:"]');
+            if (a) { e.preventDefault(); window.open(a.href, '_blank'); }
+        });
+
         // ── parse URL params ──────────────────────────────────────────────
         const params  = new URLSearchParams(window.location.search);
         const mode    = (params.get('mode') || 'delivery').toLowerCase();
