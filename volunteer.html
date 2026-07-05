@@ -102,6 +102,12 @@ if (tg) {
 }
 const initData = tg?.initData || '';
 
+// Telegram Mini App webview ignores tel:/sms: anchor taps — route via window.open
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href^="tel:"], a[href^="sms:"]');
+  if (a) { e.preventDefault(); window.open(a.href, '_blank'); }
+});
+
 async function api(action, extra = {}) {
   const res = await fetch(API_URL, {
     method: 'POST',
