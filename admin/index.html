@@ -967,7 +967,6 @@ async function loadReferrals() {
 
   if (error) { console.error(error); return; }
   allReferrals = data || [];
-  updatePillCounts();
   if (selectedRef) {
     const updated = allReferrals.find(x => x.id === selectedRef.id);
     if (updated) { selectedRef = updated; renderDetail(selectedRef); }
@@ -1022,18 +1021,23 @@ function toInputDate(ts) {
 }
 
 // ── List ────────────────────────────────────────────────────
+function matchesStatusFilter(r, status) {
+  const open = !['completed','cancelled','rejected'].includes(status);
+  return statusFilter === 'all'    ? true
+    : statusFilter === 'open'   ? open
+    : statusFilter === 'posted' ? open && !!r.telegram_posted_at
+    : statusFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
+    : status === statusFilter;  // completed | cancelled | rejected
+}
+
+function matchesTypeFilter(r) {
+  return typeFilter === 'all' || r.fulfilment_type === typeFilter;
+}
+
 function filterReferrals() {
   const filtered = allReferrals.filter(r => {
     const status = deriveStatus(r);
     const q = searchQuery.toLowerCase();
-
-    const open = !['completed','cancelled','rejected'].includes(status);
-    const matchesStatus = statusFilter === 'all'    ? true
-      : statusFilter === 'open'   ? open
-      : statusFilter === 'posted' ? open && !!r.telegram_posted_at
-      : statusFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
-      : status === statusFilter;  // completed | cancelled | rejected
-    const matchesType = typeFilter === 'all' || r.fulfilment_type === typeFilter;
 
     // searching bypasses the filters so a search always finds the referral
     if (q) return [
@@ -1044,7 +1048,7 @@ function filterReferrals() {
       r.clients?.address, r.clients?.geocoded_address,
     ].filter(Boolean).some(v => v.toLowerCase().includes(q));
 
-    return matchesStatus && matchesType;
+    return matchesStatusFilter(r, status) && matchesTypeFilter(r);
   });
   return filtered.sort((a, b) => {
     const diff = a.referral_number - b.referral_number;
@@ -1053,6 +1057,7 @@ function filterReferrals() {
 }
 
 function renderList() {
+  updatePillCounts();
   const list    = document.getElementById('ref-list');
   const visible = filterReferrals();
   if (!visible.length) {
@@ -1115,27 +1120,31 @@ function fmtPhone(s) {
 
 // ── Pill counts ─────────────────────────────────────────────
 function updatePillCounts() {
-  const counts = { all: 0, open: 0, posted: 0, delivery: 0, collection: 0,
-                   'awaiting-wishlist': 0, completed: 0, cancelled: 0, rejected: 0 };
+  // Faceted: each row's counts respect the other row's selection, so the
+  // selected pills' counts are the intersection shown in the list.
+  const statusCounts = { all: 0, open: 0, posted: 0, 'awaiting-wishlist': 0,
+                         completed: 0, cancelled: 0, rejected: 0 };
+  const typeCounts   = { all: 0, delivery: 0, collection: 0 };
   allReferrals.forEach(r => {
     const status = deriveStatus(r);
     const open = !['completed','cancelled','rejected'].includes(status);
-    counts.all++;
-    if (open) counts.open++;
-    if (open && r.telegram_posted_at) counts.posted++;
-    if (r.fulfilment_type === 'delivery')   counts.delivery++;
-    if (r.fulfilment_type === 'collection') counts.collection++;
-    if (status === 'awaiting wishlist') counts['awaiting-wishlist']++;
-    if (status === 'completed') counts.completed++;
-    if (status === 'cancelled') counts.cancelled++;
-    if (status === 'rejected') counts.rejected++;
+    if (matchesTypeFilter(r)) {
+      statusCounts.all++;
+      if (open) statusCounts.open++;
+      if (open && r.telegram_posted_at) statusCounts.posted++;
+      if (status === 'awaiting wishlist') statusCounts['awaiting-wishlist']++;
+      if (status in statusCounts && !open) statusCounts[status]++;
+    }
+    if (matchesStatusFilter(r, status)) {
+      typeCounts.all++;
+      if (r.fulfilment_type in typeCounts) typeCounts[r.fulfilment_type]++;
+    }
   });
   document.querySelectorAll('.pill[data-status], .pill[data-type]').forEach(btn => {
-    const key = btn.dataset.status || btn.dataset.type;
+    const n = btn.dataset.status ? statusCounts[btn.dataset.status] : typeCounts[btn.dataset.type];
     const label = btn.dataset.label || btn.firstChild.textContent.trim();
     btn.dataset.label = label;  // cache on first run
-    const n = counts[key] ?? '';
-    btn.innerHTML = label + (n !== '' ? `<span class="pill-sep">:</span><span class="pill-count">${n}</span>` : '');
+    btn.innerHTML = label + `<span class="pill-sep">:</span><span class="pill-count">${n}</span>`;
   });
 }
 
@@ -1570,7 +1579,6 @@ async function patchReferral(id, fields) {
     Object.assign(allReferrals[idx], fields);
     selectedRef = allReferrals[idx];
   }
-  updatePillCounts();
   renderList();
   renderDetail(selectedRef);
   return true;
@@ -1673,7 +1681,6 @@ async function deleteReferral(id) {
   const { error } = await db.from('referrals').delete().eq('id', id);
   if (error) { alert('Delete failed: ' + error.message); return; }
   allReferrals = allReferrals.filter(x => x.id !== id);
-  updatePillCounts();
   selectedRef  = null;
   document.getElementById('detail').innerHTML = '';
   renderList();
@@ -1808,7 +1815,7 @@ async function postWishlistTelegram() {
     if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
     // edge function stamps telegram_posted_at server-side; mirror it locally
     r.telegram_posted_at = new Date().toISOString();
-    updatePillCounts();
+    renderList();
     renderDetail(r);
   } catch (e) {
     flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.send, 'Telegram');
