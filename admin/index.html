@@ -213,16 +213,9 @@ a { color: inherit; text-decoration: none; }
   color: var(--accent);
   font-weight: 500;
 }
-.pill[data-toggle]:not(.active) { text-decoration: line-through; opacity: .7; }
 .pill-sep {
   margin: 0 3px;
   opacity: 0.4;
-}
-.pill-divider {
-  width: 1px;
-  align-self: stretch;
-  background: var(--border);
-  margin: 2px 1px;
 }
 .pill-count {
   font-size: 10px;
@@ -767,7 +760,6 @@ body.mobile .filter-row {
 }
 body.mobile .filter-row::-webkit-scrollbar { display: none; }
 body.mobile .pill { font-size: 13px; padding: 7px 13px; }
-body.mobile .pill-divider { margin: 2px 4px; }
 
 /* List rows: larger touch targets */
 body.mobile .ref-item { padding: 14px 16px; }
@@ -843,18 +835,18 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
           <button id="sort-btn" title="Sort order" style="flex-shrink:0;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-size:14px;line-height:1;cursor:pointer;transition:background .12s;" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='var(--bg)'">↓</button>
         </div>
         <div class="filter-row">
-          <button class="pill active" data-filter="all">All</button>
-          <button class="pill" data-filter="active" title="Posted to Telegram and not yet completed or cancelled">Active</button>
-          <button class="pill" data-filter="live" title="Not completed or cancelled (whether or not posted to Telegram)">Live</button>
-          <span class="pill-divider" title="Filters below are exclusive — only one applies at a time"></span>
-          <button class="pill" data-filter="delivery">Delivery</button>
-          <button class="pill" data-filter="collection">Collection</button>
-          <span class="pill-divider" title="Filters below are exclusive — only one applies at a time"></span>
-          <button class="pill" data-filter="awaiting-wishlist">Awaiting wishlist</button>
-          <span class="pill-divider" title="Show/hide toggles — struck-through means hidden from the list"></span>
-          <button class="pill active" data-toggle="completed" title="Toggle completed referrals in the list">Completed</button>
-          <button class="pill" data-toggle="cancelled" title="Toggle cancelled referrals in the list (hidden by default)">Cancelled</button>
-          <button class="pill" data-toggle="rejected" title="Toggle rejected referrals in the list (hidden by default)">Rejected</button>
+          <button class="pill" data-status="all">All</button>
+          <button class="pill active" data-status="open" title="Not yet completed, cancelled or rejected">Open</button>
+          <button class="pill" data-status="posted" title="Posted to Telegram and still open">Posted</button>
+          <button class="pill" data-status="awaiting-wishlist">Awaiting wishlist</button>
+          <button class="pill" data-status="completed">Completed</button>
+          <button class="pill" data-status="cancelled">Cancelled</button>
+          <button class="pill" data-status="rejected">Rejected</button>
+        </div>
+        <div class="filter-row">
+          <button class="pill active" data-type="all">Both</button>
+          <button class="pill" data-type="delivery">Delivery</button>
+          <button class="pill" data-type="collection">Collection</button>
         </div>
       </div>
       <div id="ref-list" class="ref-list">
@@ -879,8 +871,8 @@ const db = createClient(SUPABASE_URL, SUPABASE_ANON, {
 
 let allReferrals   = [];
 let selectedRef    = null;
-let activeFilter   = 'all';
-let hideStatuses   = { completed: false, cancelled: true, rejected: true };
+let statusFilter   = 'open';
+let typeFilter     = 'all';
 let searchQuery    = '';
 let sortAscending  = false;
 const WISHLIST_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSej2Tb1f1qxZcaiQ-Zrv77afU4nwIDL8PPO-LM-jguJPakLsQ/viewform?entry.175428476=';
@@ -1035,18 +1027,16 @@ function filterReferrals() {
     const status = deriveStatus(r);
     const q = searchQuery.toLowerCase();
 
-    const matchesFilter = activeFilter === 'all'      ? true
-      : activeFilter === 'active'    ? !!r.telegram_posted_at && !['completed','cancelled','rejected'].includes(status)
-      : activeFilter === 'live'      ? !['completed','cancelled','rejected'].includes(status)
-      : activeFilter === 'delivery'   ? r.fulfilment_type === 'delivery'
-      : activeFilter === 'collection' ? r.fulfilment_type === 'collection'
-      : activeFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
-      : true;
+    const open = !['completed','cancelled','rejected'].includes(status);
+    const matchesStatus = statusFilter === 'all'    ? true
+      : statusFilter === 'open'   ? open
+      : statusFilter === 'posted' ? open && !!r.telegram_posted_at
+      : statusFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
+      : status === statusFilter;  // completed | cancelled | rejected
+    const matchesType = typeFilter === 'all' || r.fulfilment_type === typeFilter;
 
-    // hide toggles don't apply while searching, so a search always finds the referral
-    if (hideStatuses[status] && !q) return false;
-
-    const matchesSearch = !q || [
+    // searching bypasses the filters so a search always finds the referral
+    if (q) return [
       String(r.referral_number),
       r.clients?.first_name, r.clients?.last_name,
       r.referrers?.name, r.referrers?.organisation,
@@ -1054,7 +1044,7 @@ function filterReferrals() {
       r.clients?.address, r.clients?.geocoded_address,
     ].filter(Boolean).some(v => v.toLowerCase().includes(q));
 
-    return matchesFilter && matchesSearch;
+    return matchesStatus && matchesType;
   });
   return filtered.sort((a, b) => {
     const diff = a.referral_number - b.referral_number;
@@ -1125,14 +1115,14 @@ function fmtPhone(s) {
 
 // ── Pill counts ─────────────────────────────────────────────
 function updatePillCounts() {
-  const counts = { all: 0, active: 0, live: 0, delivery: 0, collection: 0,
+  const counts = { all: 0, open: 0, posted: 0, delivery: 0, collection: 0,
                    'awaiting-wishlist': 0, completed: 0, cancelled: 0, rejected: 0 };
   allReferrals.forEach(r => {
     const status = deriveStatus(r);
     const open = !['completed','cancelled','rejected'].includes(status);
     counts.all++;
-    if (open) counts.live++;
-    if (open && r.telegram_posted_at) counts.active++;
+    if (open) counts.open++;
+    if (open && r.telegram_posted_at) counts.posted++;
     if (r.fulfilment_type === 'delivery')   counts.delivery++;
     if (r.fulfilment_type === 'collection') counts.collection++;
     if (status === 'awaiting wishlist') counts['awaiting-wishlist']++;
@@ -1140,8 +1130,8 @@ function updatePillCounts() {
     if (status === 'cancelled') counts.cancelled++;
     if (status === 'rejected') counts.rejected++;
   });
-  document.querySelectorAll('.pill[data-filter], .pill[data-toggle]').forEach(btn => {
-    const key = btn.dataset.filter || btn.dataset.toggle;
+  document.querySelectorAll('.pill[data-status], .pill[data-type]').forEach(btn => {
+    const key = btn.dataset.status || btn.dataset.type;
     const label = btn.dataset.label || btn.firstChild.textContent.trim();
     btn.dataset.label = label;  // cache on first run
     const n = counts[key] ?? '';
@@ -1150,24 +1140,18 @@ function updatePillCounts() {
 }
 
 // ── Filters ─────────────────────────────────────────────────
-document.querySelectorAll('.pill[data-filter]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.pill[data-filter]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.dataset.filter;
-    renderList();
+// Two independent axes: status and fulfilment type, exclusive within each row
+for (const axis of ['status', 'type']) {
+  document.querySelectorAll(`.pill[data-${axis}]`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll(`.pill[data-${axis}]`).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (axis === 'status') statusFilter = btn.dataset.status;
+      else                   typeFilter   = btn.dataset.type;
+      renderList();
+    });
   });
-});
-
-// Show/hide toggles — 'active' class means shown in the list
-document.querySelectorAll('.pill[data-toggle]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const k = btn.dataset.toggle;
-    hideStatuses[k] = !hideStatuses[k];
-    btn.classList.toggle('active', !hideStatuses[k]);
-    renderList();
-  });
-});
+}
 
 document.getElementById('sort-btn').addEventListener('click', () => {
   sortAscending = !sortAscending;
