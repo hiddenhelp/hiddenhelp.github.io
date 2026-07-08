@@ -1586,6 +1586,7 @@ async function patchReferral(id, fields) {
     Object.assign(allReferrals[idx], fields);
     selectedRef = allReferrals[idx];
   }
+  updatePillCounts();
   renderList();
   renderDetail(selectedRef);
   return true;
@@ -1823,6 +1824,7 @@ async function postWishlistTelegram() {
     if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
     // edge function stamps telegram_posted_at server-side; mirror it locally
     r.telegram_posted_at = new Date().toISOString();
+    updatePillCounts();
     renderDetail(r);
   } catch (e) {
     flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.send, 'Telegram');
