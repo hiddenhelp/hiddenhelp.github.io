@@ -1147,7 +1147,7 @@ function renderVolunteers() {
         <td style="white-space:nowrap">${fmtPhone(v.phone)}${phoneWarn(v.phone)}</td>
         <td>${flag(v.can_drive)}</td>
         <td>${flag(v.can_gather)}</td>
-        <td>${v.telegram_user_id ? `<span class="vol-flag">✓</span> ${esc(v.telegram_username ? '@' + v.telegram_username : '')}` : '<span class="vol-flag-off">Not linked</span>'}</td>
+        <td>${v.telegram_user_id ? `<span class="vol-flag">✓</span> ${esc(v.telegram_username ? '@' + v.telegram_username.replace(/^@/, '') : '')}` : '<span class="vol-flag-off">Not linked</span>'}</td>
         <td style="color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.notes || '')}</td>
       </tr>`).join('');
 
