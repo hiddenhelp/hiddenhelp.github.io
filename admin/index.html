@@ -1347,16 +1347,16 @@ function renderDetail(r) {
   ];
   const firstPending = msFields.findIndex(m => !m.ts && status !== 'cancelled');
 
+  const postedRow = r.telegram_posted_at ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Posted to Telegram</span><span class="ms-date">${fmtDateTime(r.telegram_posted_at)}</span></div>` : '';
   const milestonesView = msFields.map((m,i) => {
     const done = !!m.ts;
     const next = !done && i === firstPending;
-    return `<div class="ms-row">
+    return (m.field === 'gathered_at' ? postedRow : '') + `<div class="ms-row">
       <div class="ms-dot ${done ? 'ms-dot-done' : next ? 'ms-dot-next' : 'ms-dot-pending'}"></div>
       <span class="ms-label">${m.label}</span>
       <span class="ms-date">${done ? fmtDateTime(m.ts) : '—'}</span>
     </div>`;
   }).join('')
-  + (r.telegram_posted_at ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Posted to Telegram</span><span class="ms-date">${fmtDateTime(r.telegram_posted_at)}</span></div>` : '')
   + (r.email_drafted_at ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Email drafted</span><span class="ms-date">${fmtDateTime(r.email_drafted_at)}</span></div>` : '')
   + (r.gathered_by_id ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Gathered by</span><span class="ms-date">${esc(r.gathered_vol?.name || '—')}</span></div>` : '')
   + (r.delivered_by_id ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Delivered by</span><span class="ms-date">${esc(r.delivered_vol?.name || '—')}</span></div>` : '');
