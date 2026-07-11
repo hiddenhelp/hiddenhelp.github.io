@@ -1188,9 +1188,12 @@ function fmtPhone(s) {
 }
 
 // Warning span for display only — fmtPhone also feeds plain-text emails.
-function phoneWarn(s) {
+// freeText: field may hold non-phone text; only assess it if it contains
+// enough digits to look like an attempted phone number.
+function phoneWarn(s, freeText) {
   if (!s) return '';
   const d = String(s).replace(/\D/g, '');
+  if (freeText && d.length < 7) return '';
   const ok = (d.length === 11 && d[0] === '0') ||
              (d.length === 12 && d.startsWith('44') && d[2] !== '0');
   return ok ? '' : ` <span class="phone-warn">${ICONS.warn}Invalid number: please check</span>`;
@@ -1523,7 +1526,7 @@ function renderDetail(r) {
             <span>${esc(name)}${client.vulnerable ? ' <span class="tag tag-vuln" style="margin-left:6px">Vulnerable</span>' : ''}</span>
           </div>
           ${client.phone ? `<div class="field"><label>Phone</label><span>${fmtPhone(client.phone)}${phoneWarn(client.phone)}</span></div>` : ''}
-          ${client.client_secondary_contact ? `<div class="field"><label>Secondary contact</label><span>${esc(client.client_secondary_contact)}</span></div>` : ''}
+          ${client.client_secondary_contact ? `<div class="field"><label>Secondary contact</label><span>${esc(client.client_secondary_contact)}${phoneWarn(client.client_secondary_contact, true)}</span></div>` : ''}
           ${client.postcode ? `<div class="field"><label>Postcode</label><span>${esc(client.postcode)}</span></div>` : ''}
           ${r.can_help_lift !== null ? `<div class="field"><label>Can help lift</label><span style="color:${r.can_help_lift ? 'var(--green)' : 'var(--red)'}">${r.can_help_lift ? 'Yes' : 'No'}</span></div>` : ''}
           ${crises.length ? `<div class="field"><label>Crisis</label><span>${crises.map(esc).join(', ')}</span></div>` : ''}
