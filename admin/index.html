@@ -750,6 +750,39 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
 }
 
+/* ── Volunteers view ───────────────────────────────────────── */
+.volunteers-view { flex: 1; overflow-y: auto; padding: 24px; }
+.vol-view-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; max-width: 900px; }
+.vol-view-header h2 { font-size: 18px; font-weight: 600; flex: 1; }
+.vol-table-wrap { max-width: 900px; overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.vol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vol-table th {
+  font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase;
+  letter-spacing: .07em; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.vol-table td { padding: 9px 12px; border-bottom: 1px solid var(--bg2); vertical-align: middle; }
+.vol-table tr:last-child td { border-bottom: none; }
+.vol-table tbody tr { cursor: pointer; }
+.vol-table tbody tr:hover { background: var(--bg); }
+.vol-row-inactive { opacity: .5; }
+.vol-flag { color: var(--green); }
+.vol-flag-off { color: var(--text3); }
+.vol-edit-form { padding: 14px 12px; background: var(--bg); cursor: default; }
+.vol-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; max-width: 640px; margin-bottom: 10px; }
+.vol-field label { font-size: 11px; color: var(--text3); display: block; margin-bottom: 3px; font-weight: 500; }
+.vol-input, .vol-textarea {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; background: var(--panel); color: var(--text); outline: none;
+}
+.vol-input:focus, .vol-textarea:focus { border-color: var(--accent); }
+.vol-textarea { resize: vertical; min-height: 52px; }
+.vol-checks { display: flex; gap: 18px; align-items: center; grid-column: 1 / -1; }
+.vol-checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text2); cursor: pointer; }
+.vol-hint { font-size: 11px; color: var(--text3); margin-top: 3px; }
+body.mobile .volunteers-view { padding: 14px; }
+body.mobile .vol-edit-grid { grid-template-columns: 1fr; }
+
 /* ── Mobile portrait mode (class-based, auto-detected) ─────── */
 /* Prevent iOS tap-zoom on inputs */
 body.mobile input,
@@ -848,6 +881,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
   <header class="app-header">
     <div class="app-logo">Hidden Help Admin</div>
     <span id="user-email" class="user-email"></span>
+    <button id="view-toggle-btn" class="sign-out-btn" onclick="toggleView()">Volunteers</button>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
   <div class="app-body">
@@ -885,6 +919,9 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
       <div class="detail-empty">Select a referral to view details</div>
     </div>
 
+    <!-- Volunteers -->
+    <div id="volunteers-view" class="volunteers-view" style="display:none"></div>
+
   </div>
 </div>
 
@@ -911,6 +948,11 @@ let cancelFormType  = 'cancelled';  // 'cancelled' | 'rejected'
 let showConvertForm = false;
 let showWishlist    = false;
 let volunteers     = [];
+
+let currentView   = 'referrals';  // 'referrals' | 'volunteers'
+let allVolunteers = [];
+let editingVolId  = null;         // volunteer id | 'new' | null
+let volFilter     = 'active';     // 'active' | 'all'
 
 // ── Icons (monoline SVG, inherit button text colour) ────────
 const ICONS = {
@@ -1030,6 +1072,128 @@ async function loadReferrals() {
 async function loadVolunteers() {
   const { data } = await db.from('volunteers').select('id, name').eq('active', true).order('name');
   volunteers = data || [];
+}
+
+// ── Volunteers view ─────────────────────────────────────────
+function toggleView() {
+  currentView = currentView === 'referrals' ? 'volunteers' : 'referrals';
+  const isVol = currentView === 'volunteers';
+  document.getElementById('volunteers-view').style.display = isVol ? 'block' : 'none';
+  document.querySelector('.sidebar').style.display = isVol ? 'none' : '';
+  document.getElementById('detail').style.display = isVol ? 'none' : '';
+  document.getElementById('view-toggle-btn').textContent = isVol ? 'Referrals' : 'Volunteers';
+  if (isVol) { editingVolId = null; loadAllVolunteers(); }
+}
+
+async function loadAllVolunteers() {
+  const el = document.getElementById('volunteers-view');
+  if (!allVolunteers.length) el.innerHTML = '<div class="loading">Loading volunteers…</div>';
+  const { data, error } = await db.from('volunteers').select('*').order('name');
+  if (error) { el.innerHTML = `<div class="loading">Failed to load: ${esc(error.message)}</div>`; return; }
+  allVolunteers = data || [];
+  renderVolunteers();
+}
+
+// Same shapes the Apps Script ingest accepts; store E.164 like clients/referrers.
+function normalisePhone(raw) {
+  if (!raw) return null;
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('44') && digits.length === 12) return '+' + digits;
+  if (digits.startsWith('0')  && digits.length === 11) return '+44' + digits.slice(1);
+  if (digits.length === 10)                            return '+44' + digits;
+  return digits;
+}
+
+function setVolFilter(f) {
+  volFilter = f;
+  renderVolunteers();
+}
+
+function volEditForm(v) {
+  const isNew = !v.id;
+  return `<td colspan="6" class="vol-edit-form" onclick="event.stopPropagation()">
+    <div class="vol-edit-grid">
+      <div class="vol-field"><label>Name</label><input class="vol-input" id="vf-name" value="${esc(v.name || '')}"></div>
+      <div class="vol-field"><label>Phone</label><input class="vol-input" id="vf-phone" value="${esc(v.phone || '')}"></div>
+      <div class="vol-field">
+        <label>Telegram user ID</label><input class="vol-input" id="vf-tgid" inputmode="numeric" value="${esc(v.telegram_user_id ?? '')}">
+        <div class="vol-hint">Numeric ID linking the volunteer to the bot — get it from @userinfobot, not the @username</div>
+      </div>
+      <div class="vol-field"><label>Telegram username</label><input class="vol-input" id="vf-tguser" value="${esc(v.telegram_username || '')}"></div>
+      <div class="vol-field" style="grid-column:1/-1"><label>Notes</label><textarea class="vol-textarea" id="vf-notes">${esc(v.notes || '')}</textarea></div>
+      <div class="vol-checks">
+        <label><input type="checkbox" id="vf-drive" ${v.can_drive ? 'checked' : ''}> Can drive</label>
+        <label><input type="checkbox" id="vf-gather" ${v.can_gather ? 'checked' : ''}> Can gather</label>
+        <label><input type="checkbox" id="vf-active" ${v.active !== false ? 'checked' : ''}> Active</label>
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="btn-save-edit" onclick="saveVolunteer(${isNew ? 'null' : v.id})">${isNew ? 'Add volunteer' : 'Save'}</button>
+      <button class="btn-cancel-edit" onclick="editingVolId=null;renderVolunteers()">Cancel</button>
+    </div>
+  </td>`;
+}
+
+function renderVolunteers() {
+  const el = document.getElementById('volunteers-view');
+  const shown = allVolunteers.filter(v => volFilter === 'all' || v.active);
+  const flag = on => on ? '<span class="vol-flag">✓</span>' : '<span class="vol-flag-off">—</span>';
+
+  const rows = shown.map(v => editingVolId === v.id
+    ? `<tr>${volEditForm(v)}</tr>`
+    : `<tr class="${v.active ? '' : 'vol-row-inactive'}" onclick="editingVolId=${v.id};renderVolunteers()">
+        <td>${esc(v.name)}${v.active ? '' : ' <span class="tag tag-rejected">Inactive</span>'}</td>
+        <td style="white-space:nowrap">${fmtPhone(v.phone)}${phoneWarn(v.phone)}</td>
+        <td>${flag(v.can_drive)}</td>
+        <td>${flag(v.can_gather)}</td>
+        <td>${v.telegram_user_id ? `<span class="vol-flag">✓</span> ${esc(v.telegram_username ? '@' + v.telegram_username : '')}` : '<span class="vol-flag-off">Not linked</span>'}</td>
+        <td style="color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.notes || '')}</td>
+      </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="vol-view-header">
+      <h2>Volunteers</h2>
+      <button class="pill${volFilter === 'active' ? ' active' : ''}" onclick="setVolFilter('active')">Active (${allVolunteers.filter(v => v.active).length})</button>
+      <button class="pill${volFilter === 'all' ? ' active' : ''}" onclick="setVolFilter('all')">All (${allVolunteers.length})</button>
+      <button class="btn" onclick="editingVolId='new';renderVolunteers()">+ Add volunteer</button>
+    </div>
+    <div class="vol-table-wrap">
+      <table class="vol-table">
+        <thead><tr><th>Name</th><th>Phone</th><th>Drive</th><th>Gather</th><th>Telegram</th><th>Notes</th></tr></thead>
+        <tbody>
+          ${editingVolId === 'new' ? `<tr>${volEditForm({})}</tr>` : ''}
+          ${rows || `<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px">No volunteers</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function saveVolunteer(id) {
+  const name = document.getElementById('vf-name').value.trim();
+  if (!name) { alert('Name is required.'); return; }
+  const tgidRaw = document.getElementById('vf-tgid').value.trim();
+  if (tgidRaw && !/^\d+$/.test(tgidRaw)) { alert('Telegram user ID must be numeric.'); return; }
+
+  const payload = {
+    name,
+    phone: normalisePhone(document.getElementById('vf-phone').value),
+    telegram_user_id: tgidRaw ? Number(tgidRaw) : null,
+    telegram_username: document.getElementById('vf-tguser').value.trim().replace(/^@/, '') || null,
+    notes: document.getElementById('vf-notes').value.trim() || null,
+    can_drive:  document.getElementById('vf-drive').checked,
+    can_gather: document.getElementById('vf-gather').checked,
+    active:     document.getElementById('vf-active').checked,
+  };
+
+  const { error } = id
+    ? await db.from('volunteers').update(payload).eq('id', id)
+    : await db.from('volunteers').insert(payload);
+  if (error) { alert('Save failed: ' + error.message); return; }
+
+  editingVolId = null;
+  await loadAllVolunteers();
+  loadVolunteers();  // refresh the gathered-by/delivered-by dropdown cache
 }
 
 function deriveStatus(r) {
