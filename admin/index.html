@@ -1129,7 +1129,7 @@ function volEditForm(v) {
       </div>
     </div>
     <div class="edit-actions">
-      <button class="btn-save-edit" onclick="saveVolunteer(${isNew ? 'null' : v.id})">${isNew ? 'Add volunteer' : 'Save'}</button>
+      <button class="btn-save-edit" onclick="saveVolunteerRecord(${isNew ? 'null' : v.id})">${isNew ? 'Add volunteer' : 'Save'}</button>
       <button class="btn-cancel-edit" onclick="editingVolId=null;renderVolunteers()">Cancel</button>
     </div>
   </td>`;
@@ -1169,7 +1169,9 @@ function renderVolunteers() {
     </div>`;
 }
 
-async function saveVolunteer(id) {
+// NB: saveVolunteer(id, field, selectId) further down writes referral
+// assignments — this one edits the volunteers table itself.
+async function saveVolunteerRecord(id) {
   const name = document.getElementById('vf-name').value.trim();
   if (!name) { alert('Name is required.'); return; }
   const tgidRaw = document.getElementById('vf-tgid').value.trim();
