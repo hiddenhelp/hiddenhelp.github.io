@@ -1706,7 +1706,7 @@ function renderDetail(r) {
 
         ${r.fulfilment_type === 'delivery' ? `
         <div class="card">
-          <div class="card-title">Delivery address</div>
+          <div class="card-title">Delivery address${client.drive_miles != null ? ` (${client.drive_miles} miles${client.drive_minutes != null ? ` / ${client.drive_minutes} min` : ''} from Hidden Help)` : ''}</div>
           <div class="address-box">
             ${client.geocoded_address ? esc(client.geocoded_address).replace(/, /g,'<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
             ${client.geocode_partial ? `<div class="address-note">${ICONS.warn} Partial match — verify before delivery</div>` : ''}
