@@ -1505,6 +1505,9 @@ function renderDetail(r) {
   const mapsUrl = (client.latitude && client.longitude)
     ? `https://www.google.com/maps?q=${client.latitude},${client.longitude}${mapsLabel ? `(${encodeURIComponent(mapsLabel)})` : ''}`
     : null;
+  const deliveryMapUrl = (client.latitude && client.longitude)
+    ? `https://hiddenhelp.github.io/delivery_map.html?ref=${r.referral_number}&lat=${client.latitude}&lon=${client.longitude}`
+    : null;
 
   // Milestones view
   const msFields = [
@@ -1708,7 +1711,7 @@ function renderDetail(r) {
             ${client.geocoded_address ? esc(client.geocoded_address).replace(/, /g,'<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
             ${client.geocode_partial ? `<div class="address-note">${ICONS.warn} Partial match — verify before delivery</div>` : ''}
           </div>
-          ${mapsUrl ? `<div style="text-align:right;margin-top:8px"><a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Maps</span></a></div>` : ''}
+          ${mapsUrl ? `<div style="text-align:right;margin-top:8px;display:flex;gap:8px;justify-content:flex-end"><a href="${deliveryMapUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Delivery Map</span></a><a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Google Maps</span></a></div>` : ''}
         </div>` : `
         <div class="card">
           <div class="card-title">Collection instructions</div>
