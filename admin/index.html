@@ -1354,6 +1354,13 @@ function fmtPhone(s) {
   return esc(n);
 }
 
+// Referrers sometimes give their own number as the client contact (rather than
+// leaving it blank as the form asks) — compare last 10 digits so +44/0 agree.
+function isReferrerPhone(clientPhone, refPhone) {
+  const d = s => String(s || '').replace(/\D/g, '').slice(-10);
+  return !!clientPhone && !!refPhone && d(clientPhone) === d(refPhone);
+}
+
 // Warning span for display only — fmtPhone also feeds plain-text emails.
 // freeText: field may hold non-phone text; only assess it if it contains
 // enough digits to look like an attempted phone number.
@@ -1695,7 +1702,7 @@ function renderDetail(r) {
             <label>Name</label>
             <span>${esc(name)}${client.vulnerable ? ' <span class="tag tag-vuln" style="margin-left:6px">Vulnerable</span>' : ''}</span>
           </div>
-          ${client.phone ? `<div class="field"><label>Phone</label><span>${fmtPhone(client.phone)}${phoneWarn(client.phone)}</span></div>` : ''}
+          ${client.phone ? `<div class="field"><label>Phone</label><span>${isReferrerPhone(client.phone, ref.phone) ? 'Contact referrer' : fmtPhone(client.phone) + phoneWarn(client.phone)}</span></div>` : ''}
           ${client.client_secondary_contact ? `<div class="field"><label>Secondary contact</label><span>${esc(client.client_secondary_contact)}${phoneWarn(client.client_secondary_contact, true)}</span></div>` : ''}
           ${client.postcode ? `<div class="field"><label>Postcode</label><span>${esc(client.postcode)}</span></div>` : ''}
           ${r.can_help_lift !== null ? `<div class="field"><label>Can help lift</label><span style="color:${r.can_help_lift ? 'var(--green)' : 'var(--red)'}">${r.can_help_lift ? 'Yes' : 'No'}</span></div>` : ''}
@@ -2051,7 +2058,7 @@ function buildEmailText(r) {
   const ref = r.referrers || {};
   const isDelivery = r.fulfilment_type === 'delivery';
   const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-  const phone = fmtPhone(c.phone);
+  const phone = isReferrerPhone(c.phone, ref.phone) ? 'contact referrer' : fmtPhone(c.phone);
   const address = isDelivery
     ? (c.geocoded_address || c.address || '')
     : (r.notes ? `Needed asap. Please contact to arrange: ${r.notes}` : 'Needed asap. Please contact to arrange.');
