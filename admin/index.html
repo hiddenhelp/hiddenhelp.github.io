@@ -19,7 +19,7 @@
   --border:    #D6DACF;
   --text:      #181A17;
   --text2:     #535A51;
-  --text3:     #929A8F;
+  --text3:     #6B7367;
   --accent:        #2E6B4E;
   --accent-bg:     #E8EEEB;
   --accent-border: #A9CBB6;
@@ -238,7 +238,7 @@ a { color: inherit; text-decoration: none; }
   font-weight: 500;
 }
 .pill-count {
-  font-size: 10px;
+  font-size: 11px;
   opacity: 0.6;
   font-weight: 400;
 }
@@ -286,7 +286,7 @@ a { color: inherit; text-decoration: none; }
 .ref-org  { font-size: 11px; color: var(--text3); margin-bottom: 5px; }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .tag {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   padding: 2px 7px;
   border-radius: 99px;
@@ -400,7 +400,7 @@ a { color: inherit; text-decoration: none; }
   padding: 14px 16px;
 }
 .card-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text3);
   text-transform: uppercase;
@@ -458,7 +458,7 @@ a { color: inherit; text-decoration: none; }
 .item-row:last-child { border-bottom: none; }
 .item-qty  { font-size: 12px; font-weight: 600; color: var(--text3); min-width: 24px; }
 .item-name { font-size: 13px; flex: 1; }
-.item-cat  { font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 99px; }
+.item-cat  { font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 99px; }
 .ic-general    { background: var(--bg2); color: var(--text2); }
 .ic-other      { background: var(--bg2); color: var(--text3); font-style: italic; }
 .ic-furniture  { background: var(--purple-bg); color: var(--purple); }
@@ -646,7 +646,7 @@ a { color: inherit; text-decoration: none; }
   padding: 14px 16px;
 }
 .action-card-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text3);
   text-transform: uppercase;
@@ -758,7 +758,7 @@ a { color: inherit; text-decoration: none; }
 .vol-table-wrap { max-width: 900px; overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
 .vol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .vol-table th {
-  font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase;
+  font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase;
   letter-spacing: .07em; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1347,6 +1347,18 @@ function clientName(c) {
   return [c?.first_name, c?.last_name].filter(Boolean).map(titleCase).join(' ') || '—';
 }
 
+// Geocoder addresses arrive as "1, JAKES LANE, CHACEWATER, TRURO, TR4 8UF" —
+// join a bare house number onto the street, title-case, keep the postcode as-is.
+function fmtAddress(addr) {
+  const parts = String(addr).split(', ').filter(Boolean);
+  if (parts.length > 1 && /^\d+[A-Za-z]?$/.test(parts[0].trim())) {
+    parts.splice(0, 2, parts[0].trim() + ' ' + parts[1]);
+  }
+  return parts.map(p =>
+    /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(p.trim()) ? p.trim().toUpperCase() : titleCase(p).replace(/\b(\d+[a-z])\b/g, m => m.toUpperCase())
+  );
+}
+
 function fmtPhone(s) {
   if (!s) return '';
   // Convert +447... → 07...
@@ -1716,7 +1728,7 @@ function renderDetail(r) {
         <div class="card">
           <div class="card-title">Delivery address${client.drive_miles != null ? ` (${client.drive_miles} miles${client.drive_minutes != null ? ` / ${client.drive_minutes} min from Hidden Help` : ' from Hidden Help, straight-line — actual drive longer'})` : ''}</div>
           <div class="address-box">
-            ${client.geocoded_address ? esc(client.geocoded_address).replace(/, /g,'<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
+            ${client.geocoded_address ? fmtAddress(client.geocoded_address).map(esc).join('<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
             ${client.geocode_partial ? `<div class="address-note">${ICONS.warn} Partial match — verify before delivery</div>` : ''}
           </div>
           ${mapsUrl ? `<div style="text-align:right;margin-top:8px;display:flex;gap:8px;justify-content:flex-end"><a href="${deliveryMapUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Delivery Map</span></a><a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Google Maps</span></a></div>` : ''}
