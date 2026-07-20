@@ -1826,10 +1826,8 @@ function toggleCancelForm(type = 'cancelled') {
 function toggleWishlist() {
   showWishlist = !showWishlist;
   renderDetail(selectedRef);
-  if (showWishlist) {
-    const card = document.getElementById('wishlist-card');
-    if (card) card.scrollIntoView({ block: 'start' });
-  }
+  const card = document.getElementById('wishlist-card');
+  if (card) card.scrollIntoView({ block: 'start' });
 }
 
 function toggleConvertForm() {
