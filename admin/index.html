@@ -1767,7 +1767,7 @@ function renderDetail(r) {
       </div>
 
       ${items.length ? `
-      <div class="card">
+      <div class="card" id="wishlist-card">
         <div class="card-title-row"${showWishlist ? '' : ' style="margin-bottom:0;"'}>
           <div class="card-title">Wishlist items (${items.length})</div>
           <button class="btn-edit-card${showWishlist ? ' active' : ''}" onclick="toggleWishlist()">${showWishlist ? 'Hide ▴' : 'Show ▾'}</button>
@@ -1825,6 +1825,10 @@ function toggleCancelForm(type = 'cancelled') {
 function toggleWishlist() {
   showWishlist = !showWishlist;
   renderDetail(selectedRef);
+  if (showWishlist) {
+    const card = document.getElementById('wishlist-card');
+    if (card) card.scrollIntoView({ block: 'start' });
+  }
 }
 
 function toggleConvertForm() {
