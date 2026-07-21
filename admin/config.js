@@ -7,3 +7,9 @@ const SUPABASE_ANON = 'sb_publishable_Tciww7ztWF4Nfqve_E_ZHg_TPlLgTlg';
 
 // Email address for referral draft emails
 const REFERRAL_EMAIL_RECIPIENT = 'judy@hiddenhelp.org';
+
+// Apps Script web app (DraftEmail.gs) that saves a Gmail draft with the
+// referral PDF attached. Empty = fall back to download + Gmail compose tab.
+// Deploy from the Apps Script editor as the script owner (Deploy → New
+// deployment → Web app, execute as me, access: anyone) and paste the /exec URL.
+const DRAFT_EMAIL_WEBAPP_URL = '';
