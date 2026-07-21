@@ -2128,22 +2128,42 @@ async function draftWishlistEmail() {
   const btn = document.getElementById('wl-email-btn');
   btn.disabled = true;
   try {
-    const blob     = await fetchPdfBlob(r);
-    const blobUrl  = URL.createObjectURL(blob);
-    const filename = `Referral ${r.referral_number}.pdf`;
-
-    // Trigger PDF download
-    const a = document.createElement('a');
-    a.href = blobUrl; a.download = filename; a.click();
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-
-    // Open Gmail compose in new tab
     const subject = `*** REFERRAL ${r.referral_number} ***`;
-    const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1'
-      + `&to=${encodeURIComponent(REFERRAL_EMAIL_RECIPIENT)}`
-      + `&su=${encodeURIComponent(subject)}`
-      + `&body=${encodeURIComponent(buildEmailText(r))}`;
-    window.open(gmailUrl, '_blank');
+
+    if (typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL) {
+      // Apps Script web app saves a Gmail draft with the PDF attached
+      // (DraftEmail.gs) — compose URLs can't carry attachments.
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          token: session.access_token,
+          referral_number: r.referral_number,
+          to: REFERRAL_EMAIL_RECIPIENT,
+          subject,
+          body: buildEmailText(r),
+        }),
+      });
+      const out = await res.json();
+      if (out.error) throw new Error(out.error);
+      window.open('https://mail.google.com/mail/#drafts', '_blank');
+    } else {
+      // Fallback until the web app is deployed: download the PDF for manual
+      // attach and open a pre-filled Gmail compose tab.
+      const blob     = await fetchPdfBlob(r);
+      const blobUrl  = URL.createObjectURL(blob);
+      const filename = `Referral ${r.referral_number}.pdf`;
+
+      const a = document.createElement('a');
+      a.href = blobUrl; a.download = filename; a.click();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+      const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1'
+        + `&to=${encodeURIComponent(REFERRAL_EMAIL_RECIPIENT)}`
+        + `&su=${encodeURIComponent(subject)}`
+        + `&body=${encodeURIComponent(buildEmailText(r))}`;
+      window.open(gmailUrl, '_blank');
+    }
 
     // "drafted", not "sent" — we can't see whether the Gmail draft goes out
     const ts = new Date().toISOString();
