@@ -12,4 +12,4 @@ const REFERRAL_EMAIL_RECIPIENT = 'judy@hiddenhelp.org';
 // referral PDF attached. Empty = fall back to download + Gmail compose tab.
 // Deploy from the Apps Script editor as the script owner (Deploy → New
 // deployment → Web app, execute as me, access: anyone) and paste the /exec URL.
-const DRAFT_EMAIL_WEBAPP_URL = '';
+const DRAFT_EMAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwGjjI0dqROqs61Tb4_4gDaWZukpFgcC-dTXTZc5R86OitWYh1HpLOpwOQl2QUdWIDppA/exec';
