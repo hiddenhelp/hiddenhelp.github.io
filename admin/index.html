@@ -1210,15 +1210,16 @@ function deriveStatus(r) {
 }
 
 // The DB assigns referral_number from a sequence the moment the form is
-// submitted; admin ratifies it (or doesn't) by writing it into "Client No." on
-// Form Responses 1. Nothing reads that column live, so infer it: neither a
-// wishlist nor a Telegram post can happen until she's numbered the row.
-// Shown as #1420* — a number that may still change, or a referral she'll reject.
-// ponytail: proxy, not the truth — starred for the gap between her numbering the
-// sheet and the wishlist arriving. Stamp it properly with an onEdit trigger on
-// column B if that gap ever misleads.
+// submitted; admin ratifies it by writing it into "Client No." on Form
+// Responses 1. number_confirmed_at is stamped when the reconcile
+// (wishlist_ingest.gs, 7am + 1pm) finds the number in that column — so a null
+// means she hasn't numbered the row yet, or numbered it differently. Shown as
+// #1443*: don't quote this number, it may change or the referral may be rejected.
+// ponytail: up to half a day stale by design — an onEdit trigger on column B
+// would be live, but she doesn't need minute-accuracy and the reconcile is
+// already reading that column.
 function numProvisional(r) {
-  return !r.wishlist_submitted_at && !r.telegram_posted_at;
+  return !r.number_confirmed_at;
 }
 
 function crisisNames(r) {
