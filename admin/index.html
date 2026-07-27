@@ -1209,6 +1209,18 @@ function deriveStatus(r) {
   return 'new';
 }
 
+// The DB assigns referral_number from a sequence the moment the form is
+// submitted; admin ratifies it (or doesn't) by writing it into "Client No." on
+// Form Responses 1. Nothing reads that column live, so infer it: neither a
+// wishlist nor a Telegram post can happen until she's numbered the row.
+// Shown as #1420* — a number that may still change, or a referral she'll reject.
+// ponytail: proxy, not the truth — starred for the gap between her numbering the
+// sheet and the wishlist arriving. Stamp it properly with an onEdit trigger on
+// column B if that gap ever misleads.
+function numProvisional(r) {
+  return !r.wishlist_submitted_at && !r.telegram_posted_at;
+}
+
 function crisisNames(r) {
   if (!r.referral_crisis_types) return [];
   return r.referral_crisis_types.map(rct => rct.crisis_types?.name).filter(Boolean);
@@ -1310,7 +1322,7 @@ function renderList() {
       <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.referral_number}">
         <div class="ref-item-top">
           <div class="ref-id-tags">
-            <span class="ref-num">#${r.referral_number}</span>
+            <span class="ref-num"${numProvisional(r) ? ' title="Number not yet assigned in the sheet — may change"' : ''}>#${r.referral_number}${numProvisional(r) ? '*' : ''}</span>
             <span class="tag tag-${r.fulfilment_type}">${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span>
             <span class="tag tag-${statusKey(status)}">${statusLabel(status)}</span>
           </div>
@@ -1677,7 +1689,9 @@ function renderDetail(r) {
         <button class="btn-save-edit" onclick="saveRefNum(${r.id})" style="padding:3px 10px">✓</button>
         <button class="btn-cancel-edit" onclick="toggleEditRefNum()" style="padding:3px 8px">✕</button>
       </span>`
-    : `#${r.referral_number}<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">${ICONS.pencil}</button>`;
+    : `#${r.referral_number}${numProvisional(r)
+        ? `<span title="Number not yet assigned in the sheet — may change">*</span>` : ''
+      }<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">${ICONS.pencil}</button>`;
 
   panel.innerHTML = `
     <button class="mobile-back" onclick="mobileBackToList()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>All referrals</span></button>
