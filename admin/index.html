@@ -1805,7 +1805,7 @@ function renderDetail(r) {
         </div>
         ${showWishlist ? items.map(it => `
           <div class="item-row">
-            <span class="item-qty">×${it.quantity}</span>
+            <span class="item-qty">${it.quantity > 1 ? '×' + it.quantity : ''}</span>
             <span class="item-name">${esc(it.description)}</span>
             <span class="item-cat ic-${it.category || 'other'}">${it.category || 'free text'}</span>
           </div>`).join('') : ''}
