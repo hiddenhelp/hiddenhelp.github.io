@@ -195,6 +195,8 @@ a { color: inherit; text-decoration: none; }
   outline: none;
 }
 .search-input:focus { border-color: var(--accent); }
+/* author-styled search fields lose WebKit's clear button — put it back */
+.search-input::-webkit-search-cancel-button { -webkit-appearance: searchfield-cancel-button; }
 .filter-row {
   display: flex;
   gap: 5px;
@@ -1479,8 +1481,15 @@ document.getElementById('sort-btn').addEventListener('click', () => {
   renderList();
 });
 
-document.getElementById('search').addEventListener('input', e => {
+const searchEl = document.getElementById('search');
+searchEl.addEventListener('input', e => {
   searchQuery = e.target.value;
+  renderList();
+});
+searchEl.addEventListener('search', () => {   // WebKit clear-button click
+  searchEl.focus();
+  if (searchQuery === searchEl.value) return;
+  searchQuery = searchEl.value;
   renderList();
 });
 
