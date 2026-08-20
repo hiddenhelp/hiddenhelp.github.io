@@ -288,7 +288,7 @@
                     showETAError('Could not calculate route. Please try again.');
                     return;
                 }
-                const durationMins = data.routes[0].duration / 60;
+                const durationMins = data.routes[0].duration / 60 + 10; // +10 min padding: parking, loading, door-knocking
                 const etaTime      = new Date(Date.now() + durationMins * 60 * 1000);
                 const etaRounded   = roundUpTo5(etaTime);
                 const etaMins      = Math.round((etaRounded - Date.now()) / 60000);
