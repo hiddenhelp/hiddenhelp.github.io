@@ -1323,9 +1323,9 @@ function renderList() {
     const name    = clientName(r.clients);
     const org     = r.referrers?.organisation || r.referrers?.name || '';
     const town    = r.fulfilment_type === 'delivery' ? postTown(r.clients) : '';
-    const isSelected = selectedRef?.referral_number === r.referral_number;
+    const isSelected = selectedRef?.id === r.id;
     return `
-      <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.referral_number}">
+      <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.id}">
         <div class="ref-item-top">
           <div class="ref-id-tags">
             <span class="ref-num"${numProvisional(r) ? ' title="Number not yet assigned in the sheet — may change"' : ''}>#${r.referral_number}${numProvisional(r) ? '*' : ''}</span>
@@ -1341,7 +1341,9 @@ function renderList() {
 
   list.querySelectorAll('.ref-item').forEach(el => {
     el.addEventListener('click', () => {
-      const r = allReferrals.find(x => x.referral_number === Number(el.dataset.ref));
+      // Keyed on id, not referral_number: the number is a label that can change,
+      // and once it is nullable "null" coerces to NaN and the row stops responding.
+      const r = allReferrals.find(x => x.id === Number(el.dataset.ref));
       selectReferral(r);
     });
   });
