@@ -1707,7 +1707,7 @@ function renderDetail(r) {
           ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('cancelled')">Cancel referral</button>` : ''}
           ${r.fulfilment_type === 'collection' && !r.cancelled_at ? `<button class="btn-do-convert" onclick="toggleConvertForm()">Convert to delivery</button>` : ''}
           ${(r.completed_at || r.cancelled_at) ? `<button class="btn-do-uncomplete" onclick="uncompleteReferral(${r.id})">${r.cancelled_at ? (r.cancellation_type === 'rejected' ? 'Unreject' : 'Uncancel') : 'Unmark as completed'}</button>` : ''}
-          ${r.cancelled_at ? `<button class="btn-do-delete" onclick="deleteReferral(${r.id})">Delete referral</button>` : ''}
+          <button class="btn-do-delete" onclick="deleteReferral(${r.id})">Delete referral</button>
         </div>
       `}
     </div>`;
@@ -2015,9 +2015,24 @@ async function uncompleteReferral(id) {
 async function deleteReferral(id) {
   const r = allReferrals.find(x => x.id === id);
   if (!r) return;
-  if (!r.cancelled_at) { alert('Only cancelled or rejected referrals can be deleted.'); return; }
   const name = clientName(r.clients);
-  if (!confirm(`Permanently delete referral ${refNumLabel(r)} (${name})?\n\nThis will remove all associated wishlist items and cannot be undone.`)) return;
+
+  // Anything can be deleted now — the common case is a referral whose sheet row
+  // was removed, which never reaches "cancelled" and so could not be tidied away
+  // under the old cancelled-only gate. In exchange the confirmation names what
+  // goes with it, because a referral that has been worked on takes real history
+  // with it and there is no undo.
+  const losses = [];
+  const items = (r.wishlist_items || []).length;
+  if (items)                 losses.push(`${items} wishlist item${items === 1 ? '' : 's'}`);
+  if (r.wishlist_submitted_at) losses.push(`the wishlist submitted ${fmtDate(r.wishlist_submitted_at)}`);
+  if (r.telegram_posted_at)    losses.push(`the Telegram post of ${fmtDate(r.telegram_posted_at)}`);
+  if (r.completed_at)          losses.push(`a completion recorded ${fmtDate(r.completed_at)}`);
+  const warn = losses.length
+    ? `\n\nThis also destroys:\n  · ${losses.join('\n  · ')}`
+    : '\n\nNothing has been recorded against it — no wishlist, no post, no completion.';
+  if (!confirm(`Permanently delete referral ${refNumLabel(r)} (${name}), ` +
+               `received ${fmtDate(r.received_at || r.created_at)}?${warn}\n\nThis cannot be undone.`)) return;
   // Delete child rows first (no cascade on these FKs)
   await db.from('referral_crisis_types').delete().eq('referral_id', id);
   await db.from('wishlist_items').delete().eq('referral_id', id);
