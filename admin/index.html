@@ -723,18 +723,22 @@ a { color: inherit; text-decoration: none; }
   transition: opacity .12s;
 }
 .btn-confirm-cancel:hover { opacity: .85; }
+/* Destructive, so it is the QUIETEST button here, not the loudest: solid red
+   reads as the primary action and pulls the click it should be discouraging.
+   Neutral until hovered, and margin-left:auto sets it apart on the right so it
+   is never adjacent to the button someone actually meant to press. */
 .btn-do-delete {
   font-size: 12px;
   font-weight: 500;
   padding: 6px 14px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--red);
-  color: #fff;
-  transition: opacity .12s;
-  margin-top: 8px;
+  background: var(--bg);
+  color: var(--red);
+  transition: background .12s, border-color .12s;
+  margin-left: auto;
 }
-.btn-do-delete:hover { opacity: .8; }
+.btn-do-delete:hover { background: var(--red-bg); border-color: #F3BEBE; }
 
 /* ── Banner ────────────────────────────────────────────────── */
 .cancelled-banner {
@@ -861,6 +865,7 @@ body.mobile .field span, body.mobile .field a { font-size: 14px; }
 body.mobile .ms-edit-label { width: 110px; }
 body.mobile .action-buttons { gap: 8px; }
 body.mobile .action-buttons > button { flex: 1 1 42%; text-align: center; padding: 10px 12px; }
+body.mobile .btn-do-delete { margin-left: 0; }
 
 /* Login card fits small screens */
 body.mobile .login-card { padding: 40px 26px; margin: 16px; }
