@@ -284,6 +284,9 @@ a { color: inherit; text-decoration: none; }
   min-width: 0;
 }
 .ref-num { font-size: 13px; font-weight: 600; color: var(--text); }
+/* Not yet numbered: admin allocates in the sheet and the ingest copies it over.
+   Styled as a state rather than a blank so it reads as "waiting on you". */
+.ref-num.unnumbered { color: var(--text3); font-weight: 500; font-style: italic; }
 .ref-date { font-size: 11px; color: var(--text3); white-space: nowrap; justify-self: end; }
 .ref-name { font-size: 13px; color: var(--text); margin-bottom: 1px; }
 .ref-org  { font-size: 11px; color: var(--text3); margin-bottom: 5px;
@@ -1064,7 +1067,7 @@ async function loadReferrals() {
       gathered_vol:volunteers!gathered_by_id (name),
       delivered_vol:volunteers!delivered_by_id (name)
     `)
-    .order('referral_number', { ascending: false });
+    .order('referral_number', { ascending: false, nullsFirst: true });
 
   if (error) { console.error(error); return; }
   allReferrals = data || [];
@@ -1213,17 +1216,22 @@ function deriveStatus(r) {
   return 'new';
 }
 
-// The DB assigns referral_number from a sequence the moment the form is
-// submitted; admin ratifies it by writing it into "Client No." on Form
-// Responses 1. number_confirmed_at is stamped when the reconcile
-// (wishlist_ingest.gs, 7am + 1pm) finds the number in that column — so a null
-// means she hasn't numbered the row yet, or numbered it differently. Shown as
-// #1443*: don't quote this number, it may change or the referral may be rejected.
-// ponytail: up to half a day stale by design — an onEdit trigger on column B
-// would be live, but she doesn't need minute-accuracy and the reconcile is
-// already reading that column.
+// The DB no longer allocates: a referral is inserted with no number and stays
+// that way until admin writes one into "Client No." on Form Responses 1, which
+// the ingest copies over (debounced ~10 min after she stops typing, plus the
+// 7am/1pm passes). So a null number means "not triaged yet" — a normal state,
+// not a fault — and it is the only state the star ever described.
+//
+// number_confirmed_at survives from the two-allocator era, where the DB's own
+// number needed ratifying against hers. Every number now arrives from her, so
+// a numbered row is a confirmed row; the star only still fires on rows numbered
+// before the change. Both go in phase 3.
+function refNumLabel(r) {
+  return r.referral_number == null ? 'Unnumbered' : '#' + r.referral_number;
+}
+
 function numProvisional(r) {
-  return !r.number_confirmed_at;
+  return r.referral_number != null && !r.number_confirmed_at;
 }
 
 function crisisNames(r) {
@@ -1295,7 +1303,7 @@ function filterReferrals() {
 
     // searching bypasses the filters so a search always finds the referral
     if (q) return [
-      String(r.referral_number),
+      r.referral_number == null ? '' : String(r.referral_number),
       r.clients?.first_name, r.clients?.last_name,
       r.referrers?.name, r.referrers?.organisation,
       r.clients?.postcode,
@@ -1305,6 +1313,10 @@ function filterReferrals() {
     return matchesStatusFilter(r, status) && matchesTypeFilter(r) && matchesTownFilter(r);
   });
   return filtered.sort((a, b) => {
+    if (a.referral_number == null || b.referral_number == null) {
+      if (a.referral_number === b.referral_number) return 0;
+      return a.referral_number == null ? -1 : 1;   // unnumbered first, both ways
+    }
     const diff = a.referral_number - b.referral_number;
     return sortAscending ? diff : -diff;
   });
@@ -1328,7 +1340,7 @@ function renderList() {
       <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.id}">
         <div class="ref-item-top">
           <div class="ref-id-tags">
-            <span class="ref-num"${numProvisional(r) ? ' title="Number not yet assigned in the sheet — may change"' : ''}>#${r.referral_number}${numProvisional(r) ? '*' : ''}</span>
+            <span class="ref-num${r.referral_number == null ? ' unnumbered' : ''}"${numProvisional(r) ? ' title="Number not yet assigned in the sheet — may change"' : ''}>${refNumLabel(r)}${numProvisional(r) ? '*' : ''}</span>
             <span class="tag tag-${r.fulfilment_type}">${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span>
             <span class="tag tag-${statusKey(status)}">${statusLabel(status)}</span>
           </div>
@@ -1702,12 +1714,12 @@ function renderDetail(r) {
 
   const refNumDisplay = editingRefNum
     ? `<span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle">
-        <input id="ref-num-input" type="number" min="1" max="99999" value="${r.referral_number}"
+        <input id="ref-num-input" type="number" min="1" max="99999" value="${r.referral_number ?? ''}"
                style="width:72px;font-size:18px;padding:2px 6px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--bg);color:var(--text1)">
         <button class="btn-save-edit" onclick="saveRefNum(${r.id})" style="padding:3px 10px">✓</button>
         <button class="btn-cancel-edit" onclick="toggleEditRefNum()" style="padding:3px 8px">✕</button>
       </span>`
-    : `#${r.referral_number}${numProvisional(r)
+    : `${refNumLabel(r)}${numProvisional(r)
         ? `<span title="Number not yet assigned in the sheet — may change">*</span>` : ''
       }<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">${ICONS.pencil}</button>`;
 
@@ -1719,7 +1731,7 @@ function renderDetail(r) {
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at ? `<button class="btn" id="wishlist-link-btn" onclick="copyWishlistUrl(${r.referral_number})">${ICONS.copy}<span>Copy wishlist link</span></button>` : ''}
+        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn" id="wishlist-link-btn" onclick="copyWishlistUrl(${r.referral_number})">${ICONS.copy}<span>Copy wishlist link</span></button>` : ''}
         ${r.wishlist_submitted_at ? `
           <button class="btn${r.telegram_posted_at ? ' btn-done' : ''}" id="wl-tg-btn" onclick="postWishlistTelegram()" title="${r.telegram_posted_at ? 'Posted ' + fmtDateTime(r.telegram_posted_at) + ' — click to post again' : 'Post to Telegram'}">${r.telegram_posted_at ? ICONS.check + `<span>Posted ${fmtDate(r.telegram_posted_at)}</span>` : ICONS.send + '<span>Telegram</span>'}</button>
           <button class="btn${r.email_drafted_at ? ' btn-done' : ''}" id="wl-email-btn" onclick="draftWishlistEmail()" title="${r.email_drafted_at ? 'Draft prepared ' + fmtDateTime(r.email_drafted_at) + ' — click to draft again' : 'Download PDF and open Gmail draft'}">${r.email_drafted_at ? ICONS.check + `<span>Drafted ${fmtDate(r.email_drafted_at)}</span>` : ICONS.mail + '<span>Email</span>'}</button>
@@ -1887,7 +1899,9 @@ async function saveRefNum(id) {
     alert(`Referral number ${newNum} is already assigned to ${clashName}. Choose a different number.`);
     return;
   }
-  if (!confirm(`Change referral number to ${newNum}?`)) return;
+  if (!confirm(selectedRef?.referral_number == null
+        ? `Assign referral number ${newNum}?\n\nNormally you would type it into "Client No." on Form Responses 1 and let it copy across — do that instead unless this referral has no row there.`
+        : `Change referral number to ${newNum}?`)) return;
   editingRefNum = false;
   await patchReferral(id, { referral_number: newNum });
 }
@@ -2003,8 +2017,7 @@ async function deleteReferral(id) {
   if (!r) return;
   if (!r.cancelled_at) { alert('Only cancelled or rejected referrals can be deleted.'); return; }
   const name = clientName(r.clients);
-  const rn   = r.referral_number;
-  if (!confirm(`Permanently delete referral #${rn} (${name})?\n\nThis will remove all associated wishlist items and cannot be undone.`)) return;
+  if (!confirm(`Permanently delete referral ${refNumLabel(r)} (${name})?\n\nThis will remove all associated wishlist items and cannot be undone.`)) return;
   // Delete child rows first (no cascade on these FKs)
   await db.from('referral_crisis_types').delete().eq('referral_id', id);
   await db.from('wishlist_items').delete().eq('referral_id', id);
