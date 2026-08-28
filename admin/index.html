@@ -1851,21 +1851,24 @@ function renderDetail(r) {
 // (Supabase.gs). child_ages holds the wishlist's age-bracket matrix, which is
 // counted per bracket.
 //
-// The single number is not trustworthy, and not because anyone guessed: the
-// Under 18s answer is BANDED and its top option is "3+", which parseInt turns
-// into 3. Of 66 households that chose it, 50 have brackets totalling more than
-// three — up to eight. That is the source of 50 of the 59 disagreements in the
-// data; almost all the rest are households where the wishlist left Under 18s
-// blank. The brackets are an exact count and always at least as large.
+// The brackets win because they are counted per age band while the single
+// number is one answer to one question, and a household of six is far likelier
+// to be itemised correctly than summarised correctly.
 //
-// So the tooltip must not name a form. Whichever form supplied it, the number is
-// a band and the brackets are a count.
+// Historical wrinkle worth knowing when reading old rows: until 28 Aug 2026 the
+// Under 18s question topped out at the string "3+", which parseInt turned into
+// 3. Fourteen rows still carry a children_count of 3 or 4 against brackets of 4
+// to 8 because of it. The option is now "3" and "4", so new submissions parse
+// cleanly and a disagreement means something real again.
+//
+// Either way the tooltip must not name a form: children_count holds whichever
+// single-number answer arrived last, and it cannot tell you which.
 function householdStat(label, wishlistTotal, referralCount, suffix) {
   const n = wishlistTotal != null ? wishlistTotal : (referralCount ?? '—');
   const disagrees = wishlistTotal != null && referralCount != null &&
                     wishlistTotal !== referralCount;
   const title = disagrees
-    ? ` title="${wishlistTotal} counted on the wishlist. The household-size question says ${referralCount}, which is a banded answer — its top option is 3+."`
+    ? ` title="${wishlistTotal} counted from the age brackets; the household-size question says ${referralCount}."`
     : '';
   return `<div class="stat"${title}><label>${label}</label><span>${n}${suffix || ''}</span></div>`;
 }
