@@ -1748,8 +1748,9 @@ function renderDetail(r) {
       <div class="stat-row">
         <div class="stat"><label>Type</label><span>${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span></div>
         <div class="stat"><label>Status</label><span class="stat-${statusKey(status)}">${statusLabel(status)}</span></div>
-        <div class="stat"><label>Adults</label><span>${r.adults_count ?? '—'}${r.adults_by_sex ? ' <span style="font-size:11px;font-weight:400;color:var(--text3)">(' + (r.adults_by_sex.male ? r.adults_by_sex.male + 'M' : '') + (r.adults_by_sex.male && r.adults_by_sex.female ? '/' : '') + (r.adults_by_sex.female ? r.adults_by_sex.female + 'F' : '') + ')</span>' : ''}</span></div>
-        <div class="stat"><label>Children</label><span>${r.children_count ?? (r.child_ages ? Object.values(r.child_ages).reduce((a,b) => a+b, 0) : '—')}</span></div>
+        ${householdStat('Adults', sumCounts(r.adults_by_sex), r.adults_count,
+            r.adults_by_sex ? ' <span style="font-size:11px;font-weight:400;color:var(--text3)">(' + (r.adults_by_sex.male ? r.adults_by_sex.male + 'M' : '') + (r.adults_by_sex.male && r.adults_by_sex.female ? '/' : '') + (r.adults_by_sex.female ? r.adults_by_sex.female + 'F' : '') + ')</span>' : '')}
+        ${householdStat('Children', sumCounts(r.child_ages), r.children_count, '')}
       </div>
 
       ${(!r.cancelled_at && !r.completed_at) ? `<div style="font-size:12px;color:var(--text3);margin-top:-6px;">Mark gathered/completed via Telegram bot, or use the milestone edit below.</div>` : ''}
@@ -1840,6 +1841,35 @@ function renderDetail(r) {
       ${actionsCard}
 
     </div>`;
+}
+
+// Household size is captured twice: the referrer estimates it on the referral
+// form (adults_count / children_count), and weeks later the client itemises it
+// on the wishlist (adults_by_sex / child_ages). Where they disagree the wishlist
+// wins — it is newer, first-hand, and it is already what the Telegram post and
+// the PDF are built from (buildHousehold in the post-to-telegram function), so
+// preferring it here stops the dashboard contradicting the document the
+// volunteers are actually holding. It also stops this card contradicting the
+// age breakdown in the Client card directly below it, which has always been
+// wishlist-derived.
+//
+// The referrer's figure is kept in the tooltip rather than overwritten. A
+// disagreement is itself information — a child moved out, someone miscounted —
+// and it is the referrer's own statement about the household.
+function householdStat(label, wishlistTotal, referralCount, suffix) {
+  const n = wishlistTotal != null ? wishlistTotal : (referralCount ?? '—');
+  const disagrees = wishlistTotal != null && referralCount != null &&
+                    wishlistTotal !== referralCount;
+  const title = disagrees
+    ? ` title="Wishlist: ${wishlistTotal}. The referral form said ${referralCount}."`
+    : '';
+  return `<div class="stat"${title}><label>${label}</label><span>${n}${suffix || ''}</span></div>`;
+}
+
+function sumCounts(obj) {
+  if (!obj) return null;
+  const vals = Object.values(obj).filter(v => typeof v === 'number');
+  return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
 }
 
 function formatChildAges(ages) {
