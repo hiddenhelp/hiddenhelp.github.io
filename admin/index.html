@@ -1227,16 +1227,15 @@ function deriveStatus(r) {
 // 7am/1pm passes). So a null number means "not triaged yet" — a normal state,
 // not a fault — and it is the only state the star ever described.
 //
-// number_confirmed_at survives from the two-allocator era, where the DB's own
-// number needed ratifying against hers. Every number now arrives from her, so
-// a numbered row is a confirmed row; the star only still fires on rows numbered
-// before the change. Both go in phase 3.
+// The "#1443*" star is gone with it. It meant "the DB minted this number and
+// she may not have ratified it", a question that only existed while both sides
+// allocated. Every number now arrives from her, so a numbered row is a
+// confirmed row and the star could only ever have been noise. The last four
+// rows it had anything to say about were cleared on 28 Aug: three duplicates
+// parked at -id by a two-phase write that died mid-way, and #1535, minted by
+// the sequence hours before the default was dropped and never allocated by her.
 function refNumLabel(r) {
   return r.referral_number == null ? 'Unnumbered' : '#' + r.referral_number;
-}
-
-function numProvisional(r) {
-  return r.referral_number != null && !r.number_confirmed_at;
 }
 
 function crisisNames(r) {
@@ -1345,7 +1344,7 @@ function renderList() {
       <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.id}">
         <div class="ref-item-top">
           <div class="ref-id-tags">
-            <span class="ref-num${r.referral_number == null ? ' unnumbered' : ''}"${numProvisional(r) ? ' title="Number not yet assigned in the sheet — may change"' : ''}>${refNumLabel(r)}${numProvisional(r) ? '*' : ''}</span>
+            <span class="ref-num${r.referral_number == null ? ' unnumbered' : ''}">${refNumLabel(r)}</span>
             <span class="tag tag-${r.fulfilment_type}">${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span>
             <span class="tag tag-${statusKey(status)}">${statusLabel(status)}</span>
           </div>
@@ -1724,9 +1723,7 @@ function renderDetail(r) {
         <button class="btn-save-edit" onclick="saveRefNum(${r.id})" style="padding:3px 10px">✓</button>
         <button class="btn-cancel-edit" onclick="toggleEditRefNum()" style="padding:3px 8px">✕</button>
       </span>`
-    : `${refNumLabel(r)}${numProvisional(r)
-        ? `<span title="Number not yet assigned in the sheet — may change">*</span>` : ''
-      }<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">${ICONS.pencil}</button>`;
+    : `${refNumLabel(r)}<button class="btn-edit-refnum" onclick="toggleEditRefNum()" title="Edit referral number">${ICONS.pencil}</button>`;
 
   panel.innerHTML = `
     <button class="mobile-back" onclick="mobileBackToList()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>All referrals</span></button>
