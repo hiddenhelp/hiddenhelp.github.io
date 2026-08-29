@@ -288,10 +288,13 @@ a { color: inherit; text-decoration: none; }
    Styled as a state rather than a blank so it reads as "waiting on you". */
 .ref-num.unnumbered { color: var(--text3); font-weight: 500; font-style: italic; }
 .ref-date { font-size: 11px; color: var(--text3); white-space: nowrap; justify-self: end; }
-.ref-name { font-size: 13px; color: var(--text); margin-bottom: 1px; }
-/* Deliveries show the post town here; collections show nothing. The referrer
-   organisation used to sit here — still searchable, just not worth the line. */
-.ref-town { font-size: 11px; color: var(--text3); margin-bottom: 5px; }
+/* Name and post town share a line — deliveries get a town on the right,
+   collections get nothing. The referrer organisation used to have a line of
+   its own below; still searchable, just not worth the height. */
+.ref-name { font-size: 13px; color: var(--text);
+            display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline; }
+.ref-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-town { font-size: 11px; color: var(--text3); white-space: nowrap; }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .tag {
   font-size: 11px;
@@ -1349,8 +1352,7 @@ function renderList() {
           </div>
           <span class="ref-date">${fmtDate(r.received_at || r.created_at)}</span>
         </div>
-        <div class="ref-name">${esc(name)}</div>
-        ${town ? `<div class="ref-town">${esc(town)}</div>` : ''}
+        <div class="ref-name"><span>${esc(name)}</span>${town ? `<span class="ref-town">${esc(town)}</span>` : ''}</div>
       </div>`;
   }).join('');
 
