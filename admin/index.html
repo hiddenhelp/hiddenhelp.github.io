@@ -289,9 +289,9 @@ a { color: inherit; text-decoration: none; }
 .ref-num.unnumbered { color: var(--text3); font-weight: 500; font-style: italic; }
 .ref-date { font-size: 11px; color: var(--text3); white-space: nowrap; justify-self: end; }
 .ref-name { font-size: 13px; color: var(--text); margin-bottom: 1px; }
-.ref-org  { font-size: 11px; color: var(--text3); margin-bottom: 5px;
-            display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline; }
-.ref-town { white-space: nowrap; justify-self: end; }
+/* Deliveries show the post town here; collections show nothing. The referrer
+   organisation used to sit here — still searchable, just not worth the line. */
+.ref-town { font-size: 11px; color: var(--text3); margin-bottom: 5px; }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .tag {
   font-size: 11px;
@@ -831,7 +831,7 @@ body.mobile .pill { font-size: 13px; padding: 7px 13px; }
 body.mobile .ref-item { padding: 14px 16px; }
 body.mobile .ref-item.selected { padding-left: 13px; }
 body.mobile .ref-num, body.mobile .ref-name { font-size: 15px; }
-body.mobile .ref-org, body.mobile .ref-date { font-size: 12px; }
+body.mobile .ref-town, body.mobile .ref-date { font-size: 12px; }
 body.mobile .tag { font-size: 11px; padding: 3px 9px; }
 
 /* Detail: full-screen pane, shown only after a referral is opened */
@@ -1337,7 +1337,6 @@ function renderList() {
   list.innerHTML = visible.map(r => {
     const status  = deriveStatus(r);
     const name    = clientName(r.clients);
-    const org     = r.referrers?.organisation || r.referrers?.name || '';
     const town    = r.fulfilment_type === 'delivery' ? postTown(r.clients) : '';
     const isSelected = selectedRef?.id === r.id;
     return `
@@ -1351,7 +1350,7 @@ function renderList() {
           <span class="ref-date">${fmtDate(r.received_at || r.created_at)}</span>
         </div>
         <div class="ref-name">${esc(name)}</div>
-        ${org || town ? `<div class="ref-org"><span>${esc(org)}</span>${town ? `<span class="ref-town">${esc(town)}</span>` : ''}</div>` : ''}
+        ${town ? `<div class="ref-town">${esc(town)}</div>` : ''}
       </div>`;
   }).join('');
 
