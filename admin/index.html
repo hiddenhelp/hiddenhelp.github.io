@@ -1237,7 +1237,7 @@ function deriveStatus(r) {
 // rows it had anything to say about were cleared on 28 Aug: three duplicates
 // parked at -id by a two-phase write that died mid-way, and #1535, minted by
 // the sequence hours before the default was dropped and never allocated by her.
-// The list uses '#—' instead — same width as a number, so unnumbered rows do
+// The list uses '# —' instead — same width as a number, so unnumbered rows do
 // not shove the tags onto a second line. The word survives in the detail header.
 function refNumLabel(r) {
   return r.referral_number == null ? 'Unnumbered' : '#' + r.referral_number;
@@ -1348,7 +1348,7 @@ function renderList() {
       <div class="ref-item${isSelected ? ' selected' : ''}" data-ref="${r.id}">
         <div class="ref-item-top">
           <div class="ref-id-tags">
-            <span class="ref-num${r.referral_number == null ? ' unnumbered' : ''}"${r.referral_number == null ? ' title="Awaiting a number from the sheet"' : ''}>${r.referral_number == null ? '#—' : refNumLabel(r)}</span>
+            <span class="ref-num${r.referral_number == null ? ' unnumbered' : ''}"${r.referral_number == null ? ' title="Awaiting a number from the sheet"' : ''}>${r.referral_number == null ? '#&nbsp;—' : refNumLabel(r)}</span>
             <span class="tag tag-${r.fulfilment_type}">${r.fulfilment_type.charAt(0).toUpperCase() + r.fulfilment_type.slice(1)}</span>
             <span class="tag tag-${statusKey(status)}">${statusLabel(status)}</span>
           </div>
