@@ -1524,9 +1524,7 @@ function hasUnsavedChanges() {
   const reason = document.getElementById('cancel-reason');
   if (reason && reason.value.trim()) return true;
   const addr = document.getElementById('convert-address');
-  if (addr && addr.value.trim() !== (selectedRef.clients?.address || '')) return true;
-  const instr = document.getElementById('convert-instructions');
-  if (instr && instr.value.trim() !== (selectedRef.collection_instructions || '')) return true;
+  if (addr && addr.value.trim()) return true;
   return false;
 }
 
@@ -1684,11 +1682,10 @@ function renderDetail(r) {
           <button class="btn-confirm-cancel" onclick="cancelReferral(${r.id})">${cancelFormType === 'rejected' ? 'Confirm reject' : 'Confirm cancel'}</button>
           <button class="btn-cancel-edit" onclick="toggleCancelForm()">Back</button>
         </div>
-      ` : showConvertForm ? (r.fulfilment_type === 'collection' ? `
+      ` : showConvertForm ? `
         <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px;">Convert to delivery</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500;">Delivery address</div>
-        <textarea id="convert-address" class="cancel-reason-area" style="height:72px;" placeholder="Full delivery address…">${esc(client.address || '')}</textarea>
-        <div style="font-size:11px;color:var(--text3);margin-top:6px;">The address is geocoded on save — that is what gives it a map pin, drive miles and the map links.</div>
+        <textarea id="convert-address" class="cancel-reason-area" style="height:72px;" placeholder="Full delivery address…"></textarea>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
           <div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500;">Payment recipient</div>
@@ -1708,29 +1705,14 @@ function renderDetail(r) {
           </div>
         </div>
         <div class="edit-actions">
-          <button class="btn-save-edit" id="convert-go" onclick="convertFulfilment(${r.id}, 'delivery')">Confirm conversion</button>
+          <button class="btn-save-edit" onclick="convertToDelivery(${r.id}, ${client.id})">Confirm conversion</button>
           <button class="btn-cancel-edit" onclick="toggleConvertForm()">Back</button>
         </div>
       ` : `
-        <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px;">Convert to collection</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500;">Collection instructions</div>
-        <textarea id="convert-instructions" class="cancel-reason-area" style="height:72px;" placeholder="Who is collecting, and when…">${esc(r.collection_instructions || '')}</textarea>
-        ${r.payment_method ? `
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--text2);">
-          <input type="checkbox" id="convert-clear-payment">
-          Clear the ${esc(r.payment_method)} payment${r.payment_recipient ? ` to the ${esc(r.payment_recipient)}` : ''}
-        </label>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px;">Leave unticked if that money was taken — a collection can still carry a paid charge.</div>` : ''}
-        <div style="font-size:11px;color:var(--text3);margin-top:8px;">The address and its coordinates are kept, so converting back costs nothing.</div>
-        <div class="edit-actions">
-          <button class="btn-save-edit" id="convert-go" onclick="convertFulfilment(${r.id}, 'collection')">Confirm conversion</button>
-          <button class="btn-cancel-edit" onclick="toggleConvertForm()">Back</button>
-        </div>
-      `) : `
         <div class="action-buttons">
           ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('rejected')">Reject referral</button>` : ''}
           ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('cancelled')">Cancel referral</button>` : ''}
-          ${!r.cancelled_at ? `<button class="btn-do-convert" onclick="toggleConvertForm()">Convert to ${r.fulfilment_type === 'collection' ? 'delivery' : 'collection'}</button>` : ''}
+          ${r.fulfilment_type === 'collection' && !r.cancelled_at ? `<button class="btn-do-convert" onclick="toggleConvertForm()">Convert to delivery</button>` : ''}
           ${(r.completed_at || r.cancelled_at) ? `<button class="btn-do-uncomplete" onclick="uncompleteReferral(${r.id})">${r.cancelled_at ? (r.cancellation_type === 'rejected' ? 'Unreject' : 'Uncancel') : 'Unmark as completed'}</button>` : ''}
           <button class="btn-do-delete" onclick="deleteReferral(${r.id})">Delete referral</button>
         </div>
@@ -2051,72 +2033,16 @@ async function patchClient(clientId, fields) {
   });
 }
 
-// Flip a referral between delivery and collection.
-//
-// Goes through the Apps Script web app rather than patching Supabase directly,
-// because a conversion is not just a field: a delivery needs coordinates, and
-// geocoding needs OS_PLACES_API_KEY, which is a Script Property and has no
-// business in a browser. Without them the referral has no Google Maps link, no
-// Delivery Map link, no drive miles and no town — which is what the old
-// convertToDelivery produced every time.
-//
-// No local fallback on purpose. A conversion that silently skips the geocode is
-// exactly the half-done state this replaces; better to refuse and say why.
-async function convertFulfilment(referralId, want) {
-  const r = selectedRef; if (!r) return;
-  if (typeof DRAFT_EMAIL_WEBAPP_URL === 'undefined' || !DRAFT_EMAIL_WEBAPP_URL) {
-    alert('The Apps Script web app URL is not configured, so the address cannot be '
-        + 'geocoded and the conversion would leave the referral off the map. '
-        + 'Set DRAFT_EMAIL_WEBAPP_URL in config.js first.');
-    return;
-  }
-  if (!r.referral_number) {
-    alert('This referral has no number yet, so it cannot be converted. '
-        + 'Put one in "Client No." on Form Responses 1 first.');
-    return;
-  }
-
-  const btn = document.getElementById('convert-go');
-  if (btn) { btn.disabled = true; btn.textContent = 'Converting…'; }
-  try {
-    const { data: { session } } = await db.auth.getSession();
-    const body = {
-      token: session.access_token,
-      action: 'convert',
-      referral_number: r.referral_number,
-      fulfilment_type: want,
-    };
-    if (want === 'delivery') {
-      body.address           = document.getElementById('convert-address')?.value?.trim() || null;
-      body.payment_recipient = document.getElementById('convert-pay-recipient')?.value || null;
-      body.payment_method    = document.getElementById('convert-pay-method')?.value || null;
-    } else {
-      body.collection_instructions =
-        document.getElementById('convert-instructions')?.value?.trim() || null;
-      body.clear_payment = !!document.getElementById('convert-clear-payment')?.checked;
-    }
-
-    const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST', body: JSON.stringify(body) });
-    const out = await res.json();
-    if (out.error) throw new Error(out.error);
-
-    showConvertForm = false;
-    // Re-read rather than patching the local copy: the server may have written
-    // coordinates, geocoded_address, geocode_partial and drive metrics onto the
-    // client, and the address and map cards all render off those.
-    await loadReferrals();
-
-    if (out.warning) alert(out.warning);
-    else if (out.geocode?.partial) {
-      alert('Converted, but the geocode is a partial match: "' + out.geocode.matched
-          + '". Check the address before anyone drives out.');
-    }
-  } catch (e) {
-    console.error('Convert error:', e);
-    alert('Conversion failed: ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Confirm conversion'; }
-  }
+async function convertToDelivery(referralId, clientId) {
+  const address   = document.getElementById('convert-address')?.value?.trim() || null;
+  const recipient = document.getElementById('convert-pay-recipient')?.value || null;
+  const method    = document.getElementById('convert-pay-method')?.value || null;
+  if (address) await patchClient(clientId, { address });
+  const fields = { fulfilment_type: 'delivery' };
+  if (recipient) fields.payment_recipient = recipient;
+  if (method)    fields.payment_method    = method;
+  showConvertForm = false;
+  await patchReferral(referralId, fields);
 }
 
 async function uncompleteReferral(id) {
