@@ -2142,13 +2142,24 @@ async function deleteReferral(id) {
   const items = (r.wishlist_items || []).length;
   if (items)                 losses.push(`${items} wishlist item${items === 1 ? '' : 's'}`);
   if (r.wishlist_submitted_at) losses.push(`the wishlist submitted ${fmtDate(r.wishlist_submitted_at)}`);
-  if (r.telegram_posted_at)    losses.push(`the Telegram post of ${fmtDate(r.telegram_posted_at)}`);
   if (r.completed_at)          losses.push(`a completion recorded ${fmtDate(r.completed_at)}`);
   const warn = losses.length
     ? `\n\nThis also destroys:\n  · ${losses.join('\n  · ')}`
-    : '\n\nNothing has been recorded against it — no wishlist, no post, no completion.';
+    : '\n\nNothing has been recorded against it — no wishlist, no completion.';
+  // The Telegram post is NOT deleted and never was, though this dialog used to
+  // say it was. Nothing in the dashboard or the edge function can reach it: the
+  // message id lives in the bot's SQLite on the Mini, not in Supabase. Say so,
+  // because an orphaned post is worse than a converted one — the pinned index
+  // scans the channel, so it would go on listing a referral that no longer
+  // exists, with a Done button that patches nothing.
+  const orphan = r.telegram_posted_at
+    ? `\n\nThe Telegram post of ${fmtDate(r.telegram_posted_at)} is NOT deleted. ` +
+      `Delete it in Telegram yourself, or it will stay in the channel — and in ` +
+      `the pinned index — with no referral behind it.`
+    : '';
   if (!confirm(`Permanently delete referral ${refNumLabel(r)} (${name}), ` +
-               `received ${fmtDate(r.received_at || r.created_at)}?${warn}\n\nThis cannot be undone.`)) return;
+               `received ${fmtDate(r.received_at || r.created_at)}?${warn}${orphan}` +
+               `\n\nThis cannot be undone.`)) return;
   // Delete child rows first (no cascade on these FKs)
   await db.from('referral_crisis_types').delete().eq('referral_id', id);
   await db.from('wishlist_items').delete().eq('referral_id', id);
