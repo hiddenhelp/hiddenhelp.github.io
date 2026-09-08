@@ -2301,8 +2301,25 @@ async function postWishlistTelegram() {
     if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
     // edge function stamps telegram_posted_at server-side; mirror it locally
     r.telegram_posted_at = new Date().toISOString();
+    if (body.message_id) r.telegram_message_id = body.message_id;
     renderList();
     renderDetail(r);
+
+    // A repost retires the post it replaces. Say so only when it did NOT work,
+    // because an orphaned post is not cosmetic: the pinned index is rebuilt by
+    // scanning the channel, so the referral appears there twice and the stale
+    // one still shows the old type with live buttons.
+    if (body.previous_message_id && !body.previous_deleted) {
+      alert('Posted — but the previous Telegram message could not be deleted:\n\n'
+          + (body.previous_delete_error || 'unknown reason')
+          + '\n\nDelete it in Telegram yourself, or this referral will show twice '
+          + 'in the pinned index.');
+    } else if (body.had_previous_untracked) {
+      alert('Posted — but this referral was posted before message IDs were '
+          + 'recorded, so the earlier message could not be found automatically.\n\n'
+          + 'Delete the old post in Telegram yourself, or this referral will show '
+          + 'twice in the pinned index.');
+    }
   } catch (e) {
     flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.send, 'Telegram');
     alert('Telegram post failed: ' + e.message);
