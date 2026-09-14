@@ -1111,14 +1111,14 @@ async function loadAllVolunteers() {
   renderVolunteers();
 }
 
-// Same shapes the Apps Script ingest accepts; store E.164 like clients/referrers.
+// Keep in step with normalisePhone in Supabase.gs — national form, 07873232433.
 function normalisePhone(raw) {
   if (!raw) return null;
   const digits = String(raw).replace(/\D/g, '');
   if (!digits) return null;
-  if (digits.startsWith('44') && digits.length === 12) return '+' + digits;
-  if (digits.startsWith('0')  && digits.length === 11) return '+44' + digits.slice(1);
-  if (digits.length === 10)                            return '+44' + digits;
+  if (digits.startsWith('44') && digits.length === 12) return '0' + digits.slice(2);
+  if (digits.startsWith('0')  && digits.length === 11) return digits;
+  if (digits.length === 10)                            return '0' + digits;
   return digits;
 }
 
@@ -1399,9 +1399,9 @@ function fmtAddress(addr) {
   );
 }
 
+// Storage is national form now; the +44 fold stays for rows typed by hand.
 function fmtPhone(s) {
   if (!s) return '';
-  // Convert +447... → 07...
   const n = String(s).replace(/^\+44/, '0');
   return esc(n);
 }
