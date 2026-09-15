@@ -1755,7 +1755,13 @@ function renderDetail(r) {
       </div>
       <div class="detail-actions">
         ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn" id="wishlist-link-btn" onclick="copyWishlistUrl(${r.referral_number})">${ICONS.copy}<span>Copy wishlist link</span></button>` : ''}
-        ${r.wishlist_submitted_at ? `
+        <!-- Ruled 15 Sep 2026: an unnumbered referral is never postable, and the
+             button should not appear at all rather than appear and refuse. The
+             gate covers Email and PDF too, not just Telegram — all three resolve
+             by referral_number (the edge function does eq.referral_number, which
+             matches nothing on a null and comes back "Referral not found"), and
+             the email puts the number in its subject line. -->
+        ${r.wishlist_submitted_at && r.referral_number != null ? `
           <button class="btn${r.telegram_posted_at ? ' btn-done' : ''}" id="wl-tg-btn" onclick="postWishlistTelegram()" title="${r.telegram_posted_at ? 'Posted ' + fmtDateTime(r.telegram_posted_at) + ' — click to post again' : 'Post to Telegram'}">${r.telegram_posted_at ? ICONS.check + `<span>Posted ${fmtDate(r.telegram_posted_at)}</span>` : ICONS.send + '<span>Telegram</span>'}</button>
           <button class="btn${r.email_drafted_at ? ' btn-done' : ''}" id="wl-email-btn" onclick="draftWishlistEmail()" title="${r.email_drafted_at ? 'Draft prepared ' + fmtDateTime(r.email_drafted_at) + ' — click to draft again' : 'Download PDF and open Gmail draft'}">${r.email_drafted_at ? ICONS.check + `<span>Drafted ${fmtDate(r.email_drafted_at)}</span>` : ICONS.mail + '<span>Email</span>'}</button>
           <button class="btn" id="wl-pdf-btn" onclick="openWishlistPdf()">${ICONS.printer}<span>PDF</span></button>` : ''}
