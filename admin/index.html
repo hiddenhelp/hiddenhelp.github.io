@@ -486,6 +486,24 @@ a { color: inherit; text-decoration: none; }
 .item-removed-by { font-size: 11px; white-space: nowrap; }
 .item-undo { background: none; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; padding: 2px 8px; cursor: pointer; color: var(--text2); }
 .item-undo:hover { background: var(--bg); color: var(--text); }
+.triage-card { border-left: 3px solid var(--amber, #b46a12); }
+.triage-note { font-size: 13px; color: var(--text3); margin-bottom: 10px; }
+.triage-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.triage-row label { font-size: 12px; font-weight: 600; color: var(--text3); }
+.triage-num { width: 84px; font-size: 14px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.triage-or { font-size: 12px; color: var(--text3); }
+.dup-search { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.dup-input { width: 100%; font-size: 13px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.dup-hit { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); padding: 7px 2px; cursor: pointer; color: var(--text); }
+.dup-hit:hover { background: var(--bg); }
+.dup-hit-num { font-size: 12px; font-weight: 700; min-width: 52px; }
+.dup-hit-name { font-size: 13px; flex: 1; }
+.dup-hit-date { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.dup-none { font-size: 12px; color: var(--text3); padding: 8px 2px; }
+.dup-card { border-left: 3px solid var(--text3); }
+.dup-of { font-size: 13px; margin-bottom: 10px; }
+.dup-link { background: none; border: none; padding: 0; font-size: 13px; font-weight: 600; color: var(--accent, var(--text)); cursor: pointer; text-decoration: underline; }
+.dup-gone { color: var(--text3); font-size: 12px; }
 .ic-general    { background: var(--bg2); color: var(--text2); }
 .ic-other      { background: var(--bg2); color: var(--text3); font-style: italic; }
 .ic-furniture  { background: var(--purple-bg); color: var(--purple); }
@@ -928,12 +946,14 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
         </div>
         <div class="filter-row">
           <button class="pill" data-status="all">All</button>
+          <button class="pill" data-status="untriaged" title="No number yet, and not marked a duplicate">Untriaged</button>
           <button class="pill active" data-status="open" title="Not yet completed, cancelled or rejected">Open</button>
           <button class="pill" data-status="posted" title="Posted to Telegram and still open">Posted</button>
           <button class="pill" data-status="awaiting-wishlist">Awaiting wishlist</button>
           <button class="pill" data-status="completed">Completed</button>
           <button class="pill" data-status="cancelled">Cancelled</button>
           <button class="pill" data-status="rejected">Rejected</button>
+          <button class="pill" data-status="duplicate" title="Marked as a duplicate of another referral">Duplicate</button>
         </div>
         <div class="filter-row">
           <button class="pill active" data-type="all">Both</button>
@@ -981,6 +1001,8 @@ let cancelFormType  = 'cancelled';  // 'cancelled' | 'rejected'
 let showConvertForm = false;
 let showWishlist    = false;
 let editingWishlist = false;
+let showDuplicateSearch = false;
+let duplicateQuery = '';
 let volunteers     = [];
 
 let currentView   = 'referrals';  // 'referrals' | 'volunteers'
@@ -1234,7 +1256,24 @@ async function saveVolunteerRecord(id) {
   loadVolunteers();  // refresh the gathered-by/delivered-by dropdown cache
 }
 
+// Closed statuses in one place. A duplicate is closed work — it is not waiting
+// for anything and must never sit in Open. This was three separate copies of the
+// same array; adding a status to two of them and missing the third is the kind of
+// bug that only shows up as a wrong count someone eventually stops trusting.
+const CLOSED_STATUSES = ['completed', 'cancelled', 'rejected', 'duplicate'];
+function isOpenStatus(status) { return !CLOSED_STATUSES.includes(status); }
+
+// A referral still waiting to be triaged: no number, not marked a duplicate,
+// not closed. This is the queue admin works from.
+function isUntriaged(r) {
+  return r.referral_number == null && !r.duplicate_of && !r.cancelled_at;
+}
+
 function deriveStatus(r) {
+  // BEFORE the cancellation branch and derived from duplicate_of, never from
+  // cancellation_type — that column defaults to 'cancelled' on every row, so
+  // "unset" and "cancelled" are indistinguishable on it.
+  if (r.duplicate_of)          return 'duplicate';
   if (r.cancelled_at)          return r.cancellation_type === 'rejected' ? 'rejected' : 'cancelled';
   if (r.completed_at)          return 'completed';
   if (r.gathered_at)           return 'gathered';
@@ -1296,12 +1335,13 @@ function toInputDate(ts) {
 
 // ── List ────────────────────────────────────────────────────
 function matchesStatusFilter(r, status) {
-  const open = !['completed','cancelled','rejected'].includes(status);
+  const open = isOpenStatus(status);
   return statusFilter === 'all'    ? true
     : statusFilter === 'open'   ? open
     : statusFilter === 'posted' ? open && !!r.telegram_posted_at
     : statusFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
-    : status === statusFilter;  // completed | cancelled | rejected
+    : statusFilter === 'untriaged' ? isUntriaged(r)
+    : status === statusFilter;  // completed | cancelled | rejected | duplicate
 }
 
 function matchesTypeFilter(r) {
@@ -1448,15 +1488,16 @@ function phoneWarn(s, freeText) {
 function updatePillCounts() {
   // Faceted: each row's counts respect the other row's selection, so the
   // selected pills' counts are the intersection shown in the list.
-  const statusCounts = { all: 0, open: 0, posted: 0, 'awaiting-wishlist': 0,
-                         completed: 0, cancelled: 0, rejected: 0 };
+  const statusCounts = { all: 0, untriaged: 0, open: 0, posted: 0, 'awaiting-wishlist': 0,
+                         completed: 0, cancelled: 0, rejected: 0, duplicate: 0 };
   const typeCounts   = { all: 0, delivery: 0, collection: 0 };
   allReferrals.forEach(r => {
     const status = deriveStatus(r);
-    const open = !['completed','cancelled','rejected'].includes(status);
+    const open = isOpenStatus(status);
     if (matchesTypeFilter(r) && matchesTownFilter(r)) {
       statusCounts.all++;
       if (open) statusCounts.open++;
+      if (isUntriaged(r)) statusCounts.untriaged++;
       if (open && r.telegram_posted_at) statusCounts.posted++;
       if (status === 'awaiting wishlist') statusCounts['awaiting-wishlist']++;
       if (status in statusCounts && !open) statusCounts[status]++;
@@ -1596,7 +1637,7 @@ function renderDetail(r) {
     ? `https://www.google.com/maps?q=${client.latitude},${client.longitude}${mapsLabel ? `(${encodeURIComponent(mapsLabel)})` : ''}`
     : null;
   // only posted-and-still-open referrals are on the map (same rule as the Posted filter pill)
-  const onMap = !!r.telegram_posted_at && !['completed','cancelled','rejected'].includes(status);
+  const onMap = !!r.telegram_posted_at && isOpenStatus(status);
   const deliveryMapUrl = (onMap && client.latitude && client.longitude)
     ? `https://hiddenhelp.github.io/delivery_map.html?ref=${r.referral_number}&lat=${client.latitude}&lon=${client.longitude}`
     : null;
@@ -1860,6 +1901,43 @@ function renderDetail(r) {
           ${editingSection === 'payment' ? paymentEdit : paymentView}
         </div>
       </div>
+
+      ${isUntriaged(r) ? `
+      <div class="card triage-card">
+        <div class="card-title">Not triaged yet</div>
+        <div class="triage-note">This referral has no number. It leaves the queue one of two ways.</div>
+        <div class="triage-row">
+          <label for="triage-num">Client No.</label>
+          <input id="triage-num" class="triage-num" type="number" min="1" max="99999" value="${nextFreeNumber()}">
+          <button class="btn btn-primary" onclick="assignNumber(${r.id})">Assign number</button>
+          <span class="triage-or">or</span>
+          <button class="btn" onclick="toggleDuplicateSearch()">Mark as duplicate</button>
+        </div>
+        ${showDuplicateSearch ? `
+          <div class="dup-search">
+            <input id="dup-q" class="dup-input" placeholder="Duplicate of which referral? Number or client name…"
+                   value="${esc(duplicateQuery)}" oninput="onDuplicateQuery(this.value)" autocomplete="off">
+            ${duplicateMatches(r).length ? duplicateMatches(r).map(m => `
+              <button class="dup-hit" onclick="markDuplicate(${r.id}, ${m.id})">
+                <span class="dup-hit-num">${refNumLabel(m)}</span>
+                <span class="dup-hit-name">${esc(clientName(m.clients))}</span>
+                <span class="dup-hit-date">${fmtDate(m.received_at || m.created_at)}</span>
+              </button>`).join('')
+              : `<div class="dup-none">${duplicateQuery.trim() ? 'No referral matches that.' : 'Type a number or a name.'}</div>`}
+          </div>` : ''}
+      </div>` : ''}
+
+      ${r.duplicate_of ? (() => {
+        const orig = allReferrals.find(x => x.id === r.duplicate_of);
+        return `
+      <div class="card dup-card">
+        <div class="card-title">Duplicate</div>
+        <div class="dup-of">
+          Duplicate of ${orig ? `<button class="dup-link" onclick="selectReferral(allReferrals.find(x=>x.id===${orig.id}))">${refNumLabel(orig)} — ${esc(clientName(orig.clients))}</button>`
+                              : `referral ${r.duplicate_of} <span class="dup-gone">(no longer in the database)</span>`}
+        </div>
+        <button class="btn" onclick="unmarkDuplicate(${r.id})">Not a duplicate</button>
+      </div>`; })() : ''}
 
       ${items.length || removals.length ? `
       <div class="card" id="wishlist-card">
@@ -2264,6 +2342,88 @@ async function deleteReferral(id) {
 }
 
 // ── Notes ───────────────────────────────────────────────────
+// ── Triage: number it, or mark it a duplicate ───────────────
+// Two exits from one queue, not a flag on a numbered row. She triages, and the
+// referral leaves the untriaged list either with a number or with duplicate_of
+// set — which is why both buttons live on the same card.
+
+// Highest allocated + 1, never a gap. Ruled 14 Sep 2026: a number withdrawn in
+// error stays withdrawn. Gaps are harmless; two referrals sharing a number is
+// not, and re-offering is exactly how that happens.
+function nextFreeNumber() {
+  const highest = allReferrals.reduce((n, r) => Math.max(n, r.referral_number || 0), 0);
+  return highest + 1;
+}
+
+function toggleDuplicateSearch() {
+  showDuplicateSearch = !showDuplicateSearch;
+  duplicateQuery = '';
+  renderDetail(selectedRef);
+  if (showDuplicateSearch) setTimeout(() => document.getElementById('dup-q')?.focus(), 0);
+}
+
+function onDuplicateQuery(v) {
+  duplicateQuery = v;
+  renderDetail(selectedRef);
+  const el = document.getElementById('dup-q');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+
+// Numbered referrals only: a duplicate points at the one that was kept, and an
+// unnumbered row is not that. Never offers the referral being marked.
+function duplicateMatches(r) {
+  const q = duplicateQuery.trim().toLowerCase();
+  if (!q) return [];
+  return allReferrals
+    .filter(x => x.id !== r.id && x.referral_number != null && !x.duplicate_of)
+    .filter(x => String(x.referral_number).includes(q)
+              || clientName(x.clients).toLowerCase().includes(q))
+    .slice(0, 6);
+}
+
+async function assignNumber(id) {
+  const input = document.getElementById('triage-num');
+  const num = parseInt(input?.value, 10);
+  if (!num || num < 1 || num > 99999) { alert('Enter a valid referral number (1-99999)'); return; }
+  const clash = allReferrals.find(x => x.referral_number === num && x.id !== id);
+  if (clash) {
+    alert(`Referral number ${num} is already ${clientName(clash.clients)}. Choose a different number.`);
+    return;
+  }
+  await patchReferral(id, { referral_number: num });
+}
+
+// duplicate_of AND cancelled_at together. Ruled 14 Sep 2026: "is this closed?"
+// is already what the morning report, the bot's job list and this dashboard ask
+// to decide whether something is live work, so stamping it means every one of
+// them does the right thing without being changed.
+async function markDuplicate(id, originalId) {
+  const orig = allReferrals.find(x => x.id === originalId);
+  const r    = allReferrals.find(x => x.id === id);
+  if (!orig || !r) return;
+
+  // The hint that the wrong one of the pair is about to be marked.
+  const holds = [];
+  if ((r.wishlist_items || []).length) holds.push(`${r.wishlist_items.length} wishlist item(s)`);
+  if (r.wishlist_submitted_at) holds.push(`a wishlist submitted ${fmtDate(r.wishlist_submitted_at)}`);
+  if (r.telegram_posted_at)    holds.push(`a Telegram post from ${fmtDate(r.telegram_posted_at)}`);
+  if (holds.length && !confirm(
+        `This referral holds ${holds.join(' and ')}.\n\n` +
+        `That usually means it is the one to KEEP, and the other one is the duplicate. ` +
+        `Mark it as a duplicate of ${refNumLabel(orig)} anyway?`)) return;
+
+  showDuplicateSearch = false;
+  duplicateQuery = '';
+  await patchReferral(id, { duplicate_of: originalId, cancelled_at: new Date().toISOString() });
+}
+
+// Straight back into the untriaged queue. No confirmation — it is one reversible
+// field, and confirmations on reversible things train you to click through the
+// ones that matter.
+async function unmarkDuplicate(id) {
+  await patchReferral(id, { duplicate_of: null, cancelled_at: null });
+}
+
 // ── Wishlist corrections ────────────────────────────────────
 // wishlist_items is DERIVED: ingest_wishlist_submission rebuilds it on every
 // submission, rebuild_wishlist_items rebuilds every referral after a vocabulary
