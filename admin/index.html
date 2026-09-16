@@ -504,6 +504,8 @@ a { color: inherit; text-decoration: none; }
 .dup-of { font-size: 13px; margin-bottom: 10px; }
 .dup-link { background: none; border: none; padding: 0; font-size: 13px; font-weight: 600; color: var(--accent, var(--text)); cursor: pointer; text-decoration: underline; }
 .dup-gone { color: var(--text3); font-size: 12px; }
+.triage-warn { display: flex; gap: 7px; align-items: flex-start; font-size: 12px; line-height: 1.45; color: var(--text2); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+.triage-warn svg { flex-shrink: 0; margin-top: 1px; }
 .ic-general    { background: var(--bg2); color: var(--text2); }
 .ic-other      { background: var(--bg2); color: var(--text3); font-style: italic; }
 .ic-furniture  { background: var(--purple-bg); color: var(--purple); }
@@ -1906,6 +1908,13 @@ function renderDetail(r) {
       <div class="card triage-card">
         <div class="card-title">Not triaged yet</div>
         <div class="triage-note">This referral has no number. It leaves the queue one of two ways.</div>
+        <!-- Ruled 16 Sep 2026: the sheet stays the place numbers are allocated until
+             admin switches over deliberately. The scheduled ingest still changes the
+             database to match "Client No." whenever the two disagree, so a number
+             assigned here can be overwritten. Marking a duplicate is unaffected —
+             the ingest never touches duplicate_of. Delete this note when the ingest
+             is changed to fill blanks only. -->
+        <div class="triage-warn">${ICONS.warn}<span>Allocate in <b>Client No.</b> on Form Responses 1 — it copies across within ~10 minutes. Assign here only when there is no sheet row, because the sheet still wins if the two disagree.</span></div>
         <div class="triage-row">
           <label for="triage-num">Client No.</label>
           <input id="triage-num" class="triage-num" type="number" min="1" max="99999" value="${nextFreeNumber()}">
