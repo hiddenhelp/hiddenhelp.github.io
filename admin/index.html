@@ -310,6 +310,7 @@ a { color: inherit; text-decoration: none; }
 .tag-completed  { background: var(--green-bg);  color: var(--green); }
 .tag-cancelled  { background: var(--red-bg);    color: var(--red); }
 .tag-rejected   { background: var(--bg3);        color: var(--text2); }
+.tag-untriaged  { background: transparent;      color: var(--text3); box-shadow: inset 0 0 0 1px var(--border); }
 .tag-crisis     { background: var(--bg2);        color: var(--text2); }
 .tag-vuln       { background: var(--red-bg);    color: var(--red); }
 
@@ -400,6 +401,7 @@ a { color: inherit; text-decoration: none; }
 .stat-cancelled { color: var(--red); }
 .stat-wishlist  { color: var(--amber); }
 .stat-new       { color: var(--text2); }
+.stat-untriaged { color: var(--text3); }
 
 /* ── Cards ─────────────────────────────────────────────────── */
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -1280,6 +1282,7 @@ function deriveStatus(r) {
   if (r.completed_at)          return 'completed';
   if (r.gathered_at)           return 'gathered';
   if (r.wishlist_submitted_at) return 'awaiting gathering';
+  if (isUntriaged(r))          return 'untriaged';
   if (r.received_at)           return 'awaiting wishlist';
   return 'new';
 }
@@ -1431,11 +1434,11 @@ function renderList() {
 
 function statusKey(s) {
   return { 'completed': 'completed', 'cancelled': 'cancelled', 'rejected': 'rejected', 'gathered': 'gathered',
-           'awaiting gathering': 'gathered', 'awaiting wishlist': 'wishlist', 'new': 'new' }[s] || 'new';
+           'awaiting gathering': 'gathered', 'awaiting wishlist': 'wishlist', 'untriaged': 'untriaged', 'new': 'new' }[s] || 'new';
 }
 function statusLabel(s) {
   return { 'completed': 'Completed', 'cancelled': 'Cancelled', 'rejected': 'Rejected', 'gathered': 'Gathered',
-           'awaiting gathering': 'Awaiting gathering', 'awaiting wishlist': 'Awaiting wishlist', 'new': 'New' }[s] || s;
+           'awaiting gathering': 'Awaiting gathering', 'awaiting wishlist': 'Awaiting wishlist', 'untriaged': 'Untriaged', 'new': 'New' }[s] || s;
 }
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1791,7 +1794,7 @@ function renderDetail(r) {
         </div>
       `) : `
         <div class="action-buttons">
-          ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('rejected')">Reject referral</button>` : ''}
+          ${isUntriaged(r) ? `<button class="btn-do-cancel" onclick="toggleCancelForm('rejected')">Reject referral</button>` : ''}
           ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('cancelled')">Cancel referral</button>` : ''}
           ${!r.cancelled_at ? `<button class="btn-do-convert" onclick="toggleConvertForm()">Convert to ${r.fulfilment_type === 'collection' ? 'delivery' : 'collection'}</button>` : ''}
           ${(r.completed_at || r.cancelled_at) ? `<button class="btn-do-uncomplete" onclick="uncompleteReferral(${r.id})">${r.cancelled_at ? (r.cancellation_type === 'rejected' ? 'Unreject' : 'Uncancel') : 'Unmark as completed'}</button>` : ''}
