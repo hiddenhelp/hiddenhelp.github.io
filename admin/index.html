@@ -310,7 +310,9 @@ a { color: inherit; text-decoration: none; }
 .tag-completed  { background: var(--green-bg);  color: var(--green); }
 .tag-cancelled  { background: var(--red-bg);    color: var(--red); }
 .tag-rejected   { background: var(--bg3);        color: var(--text2); }
-.tag-untriaged  { background: transparent;      color: var(--text3); box-shadow: inset 0 0 0 1px var(--border); }
+/* Outlined, not filled: every other tag in this row marks a milestone reached,
+   this one marks the absence of one. Inset ring so the box size still matches. */
+.tag-untriaged  { background: transparent;       color: var(--text3); box-shadow: inset 0 0 0 1px var(--border); }
 .tag-crisis     { background: var(--bg2);        color: var(--text2); }
 .tag-vuln       { background: var(--red-bg);    color: var(--red); }
 
@@ -1282,6 +1284,11 @@ function deriveStatus(r) {
   if (r.completed_at)          return 'completed';
   if (r.gathered_at)           return 'gathered';
   if (r.wishlist_submitted_at) return 'awaiting gathering';
+  // Below the milestone branches on purpose. The ingest stamps received_at on
+  // every row at insert, so that branch fired the moment a referral arrived and
+  // called it 'awaiting wishlist' before anyone had looked at it. Here it can only
+  // displace that one label; at the top it would hide a gathered or completed row
+  // behind a triage pill if one ever turned up unnumbered.
   if (isUntriaged(r))          return 'untriaged';
   if (r.received_at)           return 'awaiting wishlist';
   return 'new';
@@ -1794,6 +1801,12 @@ function renderDetail(r) {
         </div>
       `) : `
         <div class="action-buttons">
+          <!-- Reject is the triage decline: declined before a number is issued, so no
+               number is burned and the row survives for reporting. Cancel is the
+               numbered case that stopped. One function serves both and they differ only
+               in cancellation_type, so on a numbered row they were one action under two
+               names. This also closes a data-loss path: cancelReferral nulls completed_at
+               and Unreject never restores it. Nothing untriaged has a completion. -->
           ${isUntriaged(r) ? `<button class="btn-do-cancel" onclick="toggleCancelForm('rejected')">Reject referral</button>` : ''}
           ${!r.cancelled_at ? `<button class="btn-do-cancel" onclick="toggleCancelForm('cancelled')">Cancel referral</button>` : ''}
           ${!r.cancelled_at ? `<button class="btn-do-convert" onclick="toggleConvertForm()">Convert to ${r.fulfilment_type === 'collection' ? 'delivery' : 'collection'}</button>` : ''}
