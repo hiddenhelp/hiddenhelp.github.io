@@ -1929,8 +1929,8 @@ function renderDetail(r) {
              database to match "Client No." whenever the two disagree, so a number
              assigned here can be overwritten. Marking a duplicate is unaffected —
              the ingest never touches duplicate_of. Delete this note when the ingest
-             is changed to fill blanks only. -->
-        <div class="triage-warn">${ICONS.warn}<span>Allocate in <b>Client No.</b> on Form Responses 1 — it copies across within ~10 minutes. Assign here only when there is no sheet row, because the sheet still wins if the two disagree.</span></div>
+             writes the number back to "Client No." instead. -->
+        <div class="triage-warn">${ICONS.warn}<span><b>Client No.</b> is currently allocated on Form Responses 1 — it copies across within ~10 minutes. A number assigned here will be overwritten by the sheet value if the two disagree.</span></div>
         <div class="triage-row">
           <label for="triage-num">Client No.</label>
           <input id="triage-num" class="triage-num" type="number" min="1" max="99999" value="${nextFreeNumber()}">
