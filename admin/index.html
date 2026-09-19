@@ -445,6 +445,10 @@ a { color: inherit; text-decoration: none; }
 }
 .address-note { font-size: 11px; color: var(--text3); margin-top: 4px; }
 .address-note svg { vertical-align: -3px; }
+/* Shown only on a partial match, where the card carries two addresses and
+   neither is meaningful without knowing which is which. */
+.address-label { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--text3); margin-bottom: 2px; }
+.address-given { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); color: var(--text2); }
 
 /* ── Milestones ────────────────────────────────────────────── */
 .ms-row {
@@ -1644,6 +1648,15 @@ function renderDetail(r) {
   const referrerNotes = [r.referrer_notes, wishFreeText].filter(Boolean).join('\n');
   const removals = activeRemovals(r);
 
+  // On a partial match the card shows BOTH addresses, so admin can see what the
+  // geocoder dropped or changed without opening the sheet — a lost flat number
+  // or a moved house number is the whole point of the warning, and the matched
+  // address alone never shows it. Needs both to be worth showing: with only one
+  // there is nothing to compare and the labels would just be clutter.
+  // NB "as given" is clients.address, which is whichever of the referral form or
+  // the wishlist wrote last — the wishlist wins when the client corrected it.
+  const showGiven = !!(client.geocode_partial && client.geocoded_address && client.address);
+
   const mapsLabel = client.geocoded_address || client.address || '';
   const mapsUrl = (client.latitude && client.longitude)
     ? `https://www.google.com/maps?q=${client.latitude},${client.longitude}${mapsLabel ? `(${encodeURIComponent(mapsLabel)})` : ''}`
@@ -1882,8 +1895,10 @@ function renderDetail(r) {
         <div class="card">
           <div class="card-title">Delivery address${client.drive_miles != null ? ` (${client.drive_miles} miles${client.drive_minutes != null ? ` / ${client.drive_minutes} min from Hidden Help` : ' from Hidden Help, straight-line — actual drive longer'})` : ''}</div>
           <div class="address-box">
+            ${showGiven ? `<div class="address-label">Geocoded to</div>` : ''}
             ${client.geocoded_address ? fmtAddress(client.geocoded_address).map(esc).join('<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
             ${client.geocode_partial ? `<div class="address-note">${ICONS.warn} Partial match — verify before delivery</div>` : ''}
+            ${showGiven ? `<div class="address-given"><div class="address-label">As given</div>${esc(client.address)}</div>` : ''}
           </div>
           ${mapsUrl ? `<div style="text-align:right;margin-top:8px;display:flex;gap:8px;justify-content:flex-end">${deliveryMapUrl ? `<a href="${deliveryMapUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Delivery Map</span></a>` : ''}<a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Google Maps</span></a></div>` : ''}
         </div>` : `
