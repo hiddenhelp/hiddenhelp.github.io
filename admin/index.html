@@ -486,6 +486,7 @@ a { color: inherit; text-decoration: none; }
 .item-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-top: 10px; margin-top: 6px; border-top: 1px dashed var(--border); }
 .item-add-desc { flex: 1 1 150px; min-width: 0; font-size: 13px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
 .item-add-qty  { width: 52px; font-size: 13px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.item-add-hint { font-size: 12px; color: var(--muted); flex: 1 1 100%; }
 .item-add-cat  { font-size: 13px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
 .item-removed-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .item-removed-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); margin-bottom: 6px; }
@@ -1014,6 +1015,7 @@ let editingWishlist = false;
 let showDuplicateSearch = false;
 let duplicateQuery = '';
 let volunteers     = [];
+let formItems      = [];   // what the wishlist form offers now — wishlist_form_items
 
 let currentView   = 'referrals';  // 'referrals' | 'volunteers'
 let allVolunteers = [];
@@ -1057,6 +1059,7 @@ function showApp(user) {
   document.getElementById('app').classList.add('visible');
   document.getElementById('user-email').textContent = user.email;
   loadVolunteers();
+  loadFormItems();
   loadReferrals();
 }
 
@@ -1140,6 +1143,23 @@ async function loadReferrals() {
 async function loadVolunteers() {
   const { data } = await db.from('volunteers').select('id, name').eq('active', true).order('name');
   volunteers = data || [];
+}
+
+// The items the wishlist form offers today, in the form's own order —
+// sync_form_items.py keeps wishlist_form_items current from the form itself.
+// Picking one of these is what gives an added item its section on the PDF, so
+// the gatherers find it where they expect rather than under "Other".
+async function loadFormItems() {
+  const { data } = await db.from('wishlist_form_items')
+    .select('item, section, position, category').order('section').order('position');
+  formItems = data || [];
+}
+
+// Free text still goes through: an off-form one-off is a real thing to add, and
+// it reads as one — no section, so it prints under "Other".
+function formItemFor(desc) {
+  const k = String(desc || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return formItems.find(i => i.item.replace(/\s+/g, ' ').trim().toLowerCase() === k) || null;
 }
 
 // ── Volunteers view ─────────────────────────────────────────
@@ -2004,7 +2024,12 @@ function renderDetail(r) {
 
         ${showWishlist && editingWishlist ? `
           <div class="item-add">
-            <input id="wl-add-desc" class="item-add-desc" placeholder="Item to add…" maxlength="80">
+            <input id="wl-add-desc" class="item-add-desc" list="wl-item-list"
+                   placeholder="Item to add…" maxlength="80" autocomplete="off"
+                   oninput="wlAddDescChanged()">
+            <datalist id="wl-item-list">
+              ${formItems.map(i => `<option value="${esc(i.item)}"></option>`).join('')}
+            </datalist>
             <input id="wl-add-qty" class="item-add-qty" type="number" min="1" max="99" value="1">
             <select id="wl-add-cat" class="item-add-cat">
               <option value="general">General</option>
@@ -2012,6 +2037,7 @@ function renderDetail(r) {
               <option value="furniture">Furniture</option>
             </select>
             <button class="btn" onclick="wlAddItem(${r.id})">Add</button>
+            <span class="item-add-hint" id="wl-add-hint"></span>
           </div>` : ''}
 
         ${showWishlist && removals.length ? `
@@ -2484,11 +2510,29 @@ async function wlCorrect(referralId, fields) {
   return true;
 }
 
+// Picking a form item settles its category, so the dropdown follows the choice
+// rather than asking again — and the hint says which heading it will print
+// under, because that is the whole reason for picking from the list.
+function wlAddDescChanged() {
+  const desc = document.getElementById('wl-add-desc')?.value || '';
+  const hint = document.getElementById('wl-add-hint');
+  const cat  = document.getElementById('wl-add-cat');
+  const it   = formItemFor(desc);
+  if (it && cat) cat.value = it.category;
+  if (!hint) return;
+  hint.textContent = !desc.trim() ? ''
+    : it ? `Section ${it.section} on the wishlist form — prints there on the PDF`
+         : 'Not on the wishlist form — prints under "Other"';
+}
+
 async function wlAddItem(referralId) {
   const desc = (document.getElementById('wl-add-desc')?.value || '').trim();
   if (!desc) { document.getElementById('wl-add-desc')?.focus(); return; }
   const qty = parseInt(document.getElementById('wl-add-qty')?.value, 10) || 1;
-  const cat = document.getElementById('wl-add-cat')?.value || 'general';
+  // A picked item carries its own category; the dropdown only decides for
+  // something typed that is not on the form.
+  const cat = formItemFor(desc)?.category
+           || document.getElementById('wl-add-cat')?.value || 'general';
   await wlCorrect(referralId, { action: 'add', description: desc, quantity: qty, category: cat });
 }
 
