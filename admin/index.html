@@ -560,6 +560,10 @@ a { color: inherit; text-decoration: none; }
   transition: background .15s;
 }
 .notes-save:hover { background: var(--accent-hover); }
+/* The wishlist note sits above the item rows, so it needs the separation the
+   Admin notes card gets for free from being its own card. */
+.wl-note { margin-bottom: 14px; }
+.wl-note-hint { margin-top: 6px; font-size: 11px; color: var(--text3); }
 
 /* ── Referral number inline edit ───────────────────────────── */
 .btn-edit-refnum {
@@ -1012,6 +1016,7 @@ let cancelFormType  = 'cancelled';  // 'cancelled' | 'rejected'
 let showConvertForm = false;
 let showWishlist    = false;
 let editingWishlist = false;
+let showWlNote      = false;
 let showDuplicateSearch = false;
 let duplicateQuery = '';
 let volunteers     = [];
@@ -1643,6 +1648,7 @@ function selectReferral(r) {
   showCancelForm  = false;
   showConvertForm = false;
   showWishlist    = false;
+  showWlNote      = false;
   renderList();
   renderDetail(r);
   if (document.body.classList.contains('mobile')) {
@@ -2001,13 +2007,20 @@ function renderDetail(r) {
 
       ${items.length || removals.length ? `
       <div class="card" id="wishlist-card">
-        <div class="card-title-row"${showWishlist ? '' : ' style="margin-bottom:0;"'}>
+        <div class="card-title-row"${showWishlist || showWlNote ? '' : ' style="margin-bottom:0;"'}>
           <div class="card-title">Wishlist items (${items.length})</div>
           <div style="display:flex;gap:6px;">
             ${showWishlist ? `<button class="btn-edit-card${editingWishlist ? ' active' : ''}" onclick="toggleWishlistEdit()">${editingWishlist ? 'Done' : 'Correct'}</button>` : ''}
+            <button class="btn-edit-card${showWlNote ? ' active' : ''}" onclick="toggleWlNote()">${r.wishlist_note ? 'Show' : 'Add'} wishlist note</button>
             <button class="btn-edit-card${showWishlist ? ' active' : ''}" onclick="toggleWishlist()">${showWishlist ? 'Hide ▴' : 'Show ▾'}</button>
           </div>
         </div>
+        ${showWlNote ? `
+          <div class="wl-note">
+            <textarea id="wl-note-area" class="notes-area" placeholder="Add a note…">${esc(r.wishlist_note || '')}</textarea>
+            <div class="wl-note-hint">Prints on the PDF under "Admin notes". The Admin notes card below does not.</div>
+            <button id="wl-note-save-btn" class="notes-save" onclick="saveWlNote(${r.id})">Save note</button>
+          </div>` : ''}
         ${showWishlist ? items.map(it => `
           <div class="item-row">
             ${editingWishlist ? `
@@ -2160,6 +2173,15 @@ function toggleWishlistEdit() {
   editingWishlist = !editingWishlist;
   if (editingWishlist) showWishlist = true;
   renderDetail(selectedRef);
+}
+
+// The note lives on the wishlist card because that is where the admin is when
+// they decide the gatherers need telling something, but it is independent of the
+// item list: opening one does not open the other.
+function toggleWlNote() {
+  showWlNote = !showWlNote;
+  renderDetail(selectedRef);
+  if (showWlNote) document.getElementById('wl-note-area')?.focus();
 }
 
 function toggleWishlist() {
@@ -2578,6 +2600,27 @@ async function saveNotes(referralId) {
   const r = allReferrals.find(x => x.id === referralId);
   if (r) r.notes = text;
   flashButton(btn, '✓ Saved', 'var(--green)', 'Save note');
+}
+
+// Unlike referrals.notes, this one prints. Saved the same way, stored apart —
+// see the referrals_wishlist_note migration for why they are two columns.
+async function saveWlNote(referralId) {
+  const text = document.getElementById('wl-note-area')?.value || '';
+  const btn  = document.getElementById('wl-note-save-btn');
+  const { error } = await db.from('referrals').update({ wishlist_note: text }).eq('id', referralId);
+  if (error) {
+    console.error('Wishlist note save error:', error);
+    flashButton(btn, '✕ Save failed', 'var(--red)', 'Save note');
+    return;
+  }
+  const r = allReferrals.find(x => x.id === referralId);
+  const labelChanges = r && !r.wishlist_note !== !text;
+  if (r) r.wishlist_note = text;
+  // The button reads "Add" or "Show" depending on whether a note exists, so the
+  // card only needs redrawing when that flips. Redrawing on every save would
+  // rebuild the textarea and throw away the caret mid-edit.
+  if (labelChanges) renderDetail(selectedRef);
+  flashButton(document.getElementById('wl-note-save-btn'), '✓ Saved', 'var(--green)', 'Save note');
 }
 
 function flashButton(btn, text, color, originalText) {
