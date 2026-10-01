@@ -1665,13 +1665,28 @@ function renderDetail(r) {
   const ref    = r.referrers || {};
   const name   = clientName(client);
   const crises = crisisNames(r);
-  // wishlist_items with null category are free-text (form column EP), not real items —
-  // keep them out of the wishlist list and fold them into the referrer notes instead
+  // wishlist_items with null category are free-text (form column EP), not real
+  // items — keep them out of the wishlist list.
   const items  = (r.wishlist_items || []).filter(it => it.category)
     .sort((a,b) => a.category.localeCompare(b.category) || a.description.localeCompare(b.description));
   const wishFreeText = (r.wishlist_items || []).filter(it => !it.category)
     .map(it => it.description).join('\n');
-  const referrerNotes = [r.referrer_notes, wishFreeText].filter(Boolean).join('\n');
+
+  // EP is the CLIENT's answer and belongs in the Client card. It used to be
+  // appended to the referrer's notes, which put the client's own words under
+  // somebody else's name — and made the Referrer card look like it held text
+  // that was nowhere in referrals.referrer_notes.
+  //
+  // Read from client_notes first and fall back to the free-text row, because
+  // which one holds it depends on when the referral arrived: the header
+  // client_notes is filled from was stale from the rename until 1 Oct 2026, so
+  // older referrals have only the wishlist_items row. New ones have both, and
+  // they are the same sentence — hence the equality check rather than a join.
+  const referrerNotes = r.referrer_notes || '';
+  const clientNotes = [r.client_notes, wishFreeText]
+    .filter(Boolean)
+    .filter((t, i, a) => a.indexOf(t) === i)
+    .join('\n');
   const removals = activeRemovals(r);
 
   // On a partial match the card shows BOTH addresses, so admin can see what the
@@ -1914,7 +1929,7 @@ function renderDetail(r) {
           ${crises.length ? `<div class="field"><label>Crisis</label><span>${crises.map(esc).join(', ')}</span></div>` : ''}
           ${r.crisis_other_detail ? `<div class="field"><label>Crisis detail</label><span>${esc(r.crisis_other_detail)}</span></div>` : ''}
           ${formatChildAges(r.child_ages)}
-          ${r.client_notes ? `<div class="field"><label>Client notes</label><span style="white-space:pre-wrap">${esc(r.client_notes)}</span></div>` : ''}
+          ${clientNotes ? `<div class="field"><label>Client notes</label><span style="white-space:pre-wrap">${esc(clientNotes)}</span></div>` : ''}
         </div>
 
         ${r.fulfilment_type === 'delivery' ? `
