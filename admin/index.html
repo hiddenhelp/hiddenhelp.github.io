@@ -962,7 +962,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
         <div class="filter-row">
           <button class="pill" data-status="all">All</button>
           <button class="pill" data-status="untriaged" title="No number yet, and not marked a duplicate">Untriaged</button>
-          <button class="pill active" data-status="open" title="Not yet completed, cancelled or rejected">Open</button>
+          <button class="pill active" data-status="open" title="Wishlist in, not yet gathered, and not yet posted to Telegram">Open</button>
           <button class="pill" data-status="posted" title="Posted to Telegram and still open">Posted</button>
           <button class="pill" data-status="awaiting-wishlist">Awaiting wishlist</button>
           <button class="pill" data-status="completed">Completed</button>
@@ -1374,10 +1374,17 @@ function toInputDate(ts) {
 }
 
 // ── List ────────────────────────────────────────────────────
+// "Open" since 8 Oct 2026: wishlist in, not gathered, not posted — the
+// referrals waiting on admin to send them to Telegram. It used to be every
+// referral not completed, cancelled or rejected.
+function isReadyToPost(r, status) {
+  return status === 'awaiting gathering' && !r.telegram_posted_at;
+}
+
 function matchesStatusFilter(r, status) {
   const open = isOpenStatus(status);
   return statusFilter === 'all'    ? true
-    : statusFilter === 'open'   ? open
+    : statusFilter === 'open'   ? isReadyToPost(r, status)
     : statusFilter === 'posted' ? open && !!r.telegram_posted_at
     : statusFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
     : statusFilter === 'untriaged' ? isUntriaged(r)
@@ -1536,7 +1543,7 @@ function updatePillCounts() {
     const open = isOpenStatus(status);
     if (matchesTypeFilter(r) && matchesTownFilter(r)) {
       statusCounts.all++;
-      if (open) statusCounts.open++;
+      if (isReadyToPost(r, status)) statusCounts.open++;
       if (isUntriaged(r)) statusCounts.untriaged++;
       if (open && r.telegram_posted_at) statusCounts.posted++;
       if (status === 'awaiting wishlist') statusCounts['awaiting-wishlist']++;
