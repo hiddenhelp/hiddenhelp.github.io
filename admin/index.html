@@ -2405,9 +2405,20 @@ async function importWishlist(referralId) {
   if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
   try {
     const { data: { session } } = await db.auth.getSession();
-    const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST',
-      body: JSON.stringify({ token: session.access_token, action: 'importWishlist', referral_id: referralId }) });
-    const out = await res.json();
+    const call = async (extra) => (await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST',
+      body: JSON.stringify({ token: session.access_token, action: 'importWishlist',
+                             referral_id: referralId, ...extra }) })).json();
+    let out = await call({});
+    // The name typed on the form is not this referral's client. Often harmless
+    // (a nickname, a married name, a support worker filling it in) — her call.
+    if (out.name_mismatch) {
+      const m = out.name_mismatch;
+      if (!confirm('The names do not match.\n\n'
+          + 'Wishlist (row ' + m.row + ' of Form responses 2 New) is signed:\n    ' + (m.typed || '(blank)') + '\n'
+          + '#' + m.number + ' belongs to:\n    ' + (m.held || '(no name on file)') + '\n\n'
+          + 'Import this wishlist onto #' + m.number + ' anyway?')) return;
+      out = await call({ confirm_name: true });
+    }
     if (out.error) throw new Error(out.error);
     await loadReferrals();
   } catch (e) {
