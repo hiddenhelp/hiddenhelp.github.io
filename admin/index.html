@@ -947,8 +947,6 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
   <header class="app-header">
     <div class="app-logo">Hidden Help Admin</div>
     <span id="user-email" class="user-email"></span>
-    <button id="reconcile-btn" class="sign-out-btn" onclick="runReconcile()"
-      title="Copy numbers from the sheet and pull in any missed wishlists (the midday check, now)">Reconcile</button>
     <button id="view-toggle-btn" class="sign-out-btn" onclick="toggleView()">Volunteers</button>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
@@ -2083,6 +2081,9 @@ function renderDetail(r) {
       <div class="card">
         <div class="card-title">Wishlist items</div>
         <div style="font-size:13px;color:var(--text3)">No wishlist received yet</div>
+        ${deriveStatus(r) === 'awaiting wishlist' ? `
+        <button id="wl-import-btn" class="btn" style="margin-top:10px" onclick="importWishlist(${r.id})"
+          title="Pull in a wishlist the client submitted under the wrong number, once that number has been corrected in column B of Form responses 2 New">Import wishlist</button>` : ''}
       </div>`}
 
       <div class="card">
@@ -2392,36 +2393,29 @@ async function convertFulfilment(referralId, want) {
   }
 }
 
-// The midday reconcile on demand (webReconcile in DraftEmail.gs): heal the
-// numbering from "Client No." and replay any wishlist that missed its referral.
-async function runReconcile() {
+// For a wishlist submitted under the wrong number: once admin corrects column B
+// of "Form responses 2 New", this replays that row (webImportWishlist in
+// DraftEmail.gs). A sheet edit never re-fires the form-submit trigger.
+async function importWishlist(referralId) {
   if (typeof DRAFT_EMAIL_WEBAPP_URL === 'undefined' || !DRAFT_EMAIL_WEBAPP_URL) {
     alert('The Apps Script web app URL is not configured (DRAFT_EMAIL_WEBAPP_URL in config.js).');
     return;
   }
-  const btn = document.getElementById('reconcile-btn');
-  btn.disabled = true; btn.textContent = 'Reconciling…';
+  const btn = document.getElementById('wl-import-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
   try {
     const { data: { session } } = await db.auth.getSession();
     const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST',
-      body: JSON.stringify({ token: session.access_token, action: 'reconcile' }) });
+      body: JSON.stringify({ token: session.access_token, action: 'importWishlist', referral_id: referralId }) });
     const out = await res.json();
     if (out.error) throw new Error(out.error);
     await loadReferrals();
-    alert(reconcileReport(out));
   } catch (e) {
-    console.error('Reconcile error:', e);
-    alert('Reconcile failed: ' + e.message);
+    console.error('Import wishlist error:', e);
+    alert('Import failed: ' + e.message);
   } finally {
-    btn.disabled = false; btn.textContent = 'Reconcile';
+    if (btn) { btn.disabled = false; btn.textContent = 'Import wishlist'; }
   }
-}
-
-function reconcileReport(out) {
-  const healed = out.healed || [], problems = out.problems || [];
-  if (!healed.length && !problems.length) return 'All clear — the sheet and the database agree.';
-  return (healed.length ? 'Wishlists pulled in:\n' + healed.join('\n') + '\n\n' : '')
-       + (problems.length ? 'Needs attention:\n' + problems.join('\n\n') : '');
 }
 
 async function uncompleteReferral(id) {
