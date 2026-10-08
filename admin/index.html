@@ -947,6 +947,8 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
   <header class="app-header">
     <div class="app-logo">Hidden Help Admin</div>
     <span id="user-email" class="user-email"></span>
+    <button id="reconcile-btn" class="sign-out-btn" onclick="runReconcile()"
+      title="Copy numbers from the sheet and pull in any missed wishlists (the midday check, now)">Reconcile</button>
     <button id="view-toggle-btn" class="sign-out-btn" onclick="toggleView()">Volunteers</button>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
@@ -2388,6 +2390,38 @@ async function convertFulfilment(referralId, want) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Confirm conversion'; }
   }
+}
+
+// The midday reconcile on demand (webReconcile in DraftEmail.gs): heal the
+// numbering from "Client No." and replay any wishlist that missed its referral.
+async function runReconcile() {
+  if (typeof DRAFT_EMAIL_WEBAPP_URL === 'undefined' || !DRAFT_EMAIL_WEBAPP_URL) {
+    alert('The Apps Script web app URL is not configured (DRAFT_EMAIL_WEBAPP_URL in config.js).');
+    return;
+  }
+  const btn = document.getElementById('reconcile-btn');
+  btn.disabled = true; btn.textContent = 'Reconciling…';
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST',
+      body: JSON.stringify({ token: session.access_token, action: 'reconcile' }) });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    await loadReferrals();
+    alert(reconcileReport(out));
+  } catch (e) {
+    console.error('Reconcile error:', e);
+    alert('Reconcile failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Reconcile';
+  }
+}
+
+function reconcileReport(out) {
+  const healed = out.healed || [], problems = out.problems || [];
+  if (!healed.length && !problems.length) return 'All clear — the sheet and the database agree.';
+  return (healed.length ? 'Wishlists pulled in:\n' + healed.join('\n') + '\n\n' : '')
+       + (problems.length ? 'Needs attention:\n' + problems.join('\n\n') : '');
 }
 
 async function uncompleteReferral(id) {
