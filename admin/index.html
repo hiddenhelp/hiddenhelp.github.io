@@ -1688,11 +1688,13 @@ function renderDetail(r) {
   // client_notes is filled from was stale from the rename until 1 Oct 2026, so
   // older referrals have only the wishlist_items row. New ones have both, and
   // they are the same sentence — hence the equality check rather than a join.
+  //
+  // Once client_notes is set it wins outright, '' included (admin cleared it):
+  // it is what the PDF and the Telegram message print, and since 13 Oct 2026
+  // admin can edit it on this card, so appending the original answer would put
+  // back the words she just took out.
   const referrerNotes = r.referrer_notes || '';
-  const clientNotes = [r.client_notes, wishFreeText]
-    .filter(Boolean)
-    .filter((t, i, a) => a.indexOf(t) === i)
-    .join('\n');
+  const clientNotes = r.client_notes != null ? r.client_notes : wishFreeText;
   const removals = activeRemovals(r);
 
   // On a partial match the card shows BOTH addresses, so admin can see what the
@@ -1923,7 +1925,11 @@ function renderDetail(r) {
 
       <div class="three-col">
         <div class="card">
-          <div class="card-title">Client</div>
+          <div class="card-title-row">
+            <div class="card-title">Client</div>
+            <button class="btn-edit-card${editingSection==='client'?' active':''}" onclick="toggleEdit('client')">${editingSection==='client'?'Cancel':'Edit'}</button>
+          </div>
+          ${editingSection === 'client' ? clientEdit(r, clientNotes) : `
           <div class="field">
             <label>Name</label>
             <span>${esc(name)}${client.vulnerable ? ' <span class="tag tag-vuln" style="margin-left:6px">Vulnerable</span>' : ''}</span>
@@ -1935,7 +1941,7 @@ function renderDetail(r) {
           ${crises.length ? `<div class="field"><label>Crisis</label><span>${crises.map(esc).join(', ')}</span></div>` : ''}
           ${r.crisis_other_detail ? `<div class="field"><label>Crisis detail</label><span>${esc(r.crisis_other_detail)}</span></div>` : ''}
           ${formatChildAges(r.child_ages)}
-          ${clientNotes ? `<div class="field"><label>Client notes</label><span style="white-space:pre-wrap">${esc(clientNotes)}</span></div>` : ''}
+          ${clientNotes ? `<div class="field"><label>Client notes</label><span style="white-space:pre-wrap">${esc(clientNotes)}</span></div>` : ''}`}
         </div>
 
         ${r.fulfilment_type === 'delivery' ? `
@@ -2296,6 +2302,78 @@ async function saveVolunteer(id, field, selectId) {
   const r = allReferrals.find(x => x.id === id);
   if (r) r[joinField] = volName ? { name: volName } : null;
   await patchReferral(id, { [field]: parsed });
+}
+
+// The Client card's edit form. Postcode and address are left out on purpose:
+// they drive the map pin and drive distance, which only a re-geocode keeps
+// true. Crisis types and child ages are structured and stay as the forms gave
+// them. A client can be on several referrals (repeat clients), and the edit is
+// to the person, so it shows on all of them.
+function clientEdit(r, notes) {
+  const c = r.clients || {};
+  const others = allReferrals.filter(x => x.client_id === r.client_id && x.id !== r.id).length;
+  const lift = r.can_help_lift === true ? 'yes' : r.can_help_lift === false ? 'no' : '';
+  return `
+    <div class="vol-field"><label>First name</label><input class="vol-input" id="ce-first" value="${esc(c.first_name || '')}"></div>
+    <div class="vol-field"><label>Last name</label><input class="vol-input" id="ce-last" value="${esc(c.last_name || '')}"></div>
+    <div class="vol-field"><label>Phone</label><input class="vol-input" id="ce-phone" value="${esc(c.phone || '')}"></div>
+    <div class="vol-field"><label>Secondary contact</label><input class="vol-input" id="ce-secondary" value="${esc(c.client_secondary_contact || '')}"></div>
+    <div class="vol-field"><label><input type="checkbox" id="ce-vuln"${c.vulnerable ? ' checked' : ''}> Vulnerable</label></div>
+    <div class="vol-field"><label>Can help lift</label>
+      <select class="vol-select" id="ce-lift">
+        <option value=""${lift === '' ? ' selected' : ''}>— not answered —</option>
+        <option value="yes"${lift === 'yes' ? ' selected' : ''}>Yes</option>
+        <option value="no"${lift === 'no' ? ' selected' : ''}>No</option>
+      </select></div>
+    <div class="vol-field"><label>Crisis detail</label><input class="vol-input" id="ce-crisis" value="${esc(r.crisis_other_detail || '')}"></div>
+    <div class="vol-field"><label>Client notes <span style="font-weight:400;color:var(--text3)">(printed on the PDF)</span></label>
+      <textarea class="vol-textarea" id="ce-notes" rows="4">${esc(notes)}</textarea></div>
+    ${others ? `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Name, phone, secondary contact and vulnerable also change on this client's ${others} other referral${others > 1 ? 's' : ''}.</div>` : ''}
+    <div class="edit-actions">
+      <button class="btn-save-edit" onclick="saveClient(${r.id})">Save</button>
+      <button class="btn-cancel-edit" onclick="toggleEdit('client')">Cancel</button>
+    </div>`;
+}
+
+// Word-level, like wlSamePerson_ in wishlist_ingest.gs: a respelling keeps a
+// word in common, a different person does not.
+function sharesNameWord(a, b) {
+  const words = s => String(s || '').toLowerCase().split(/[^a-z]+/).filter(w => w.length > 1);
+  const wa = words(a), wb = words(b);
+  return !wa.length || !wb.length || wa.some(w => wb.includes(w));
+}
+
+async function saveClient(id) {
+  const r = allReferrals.find(x => x.id === id);
+  if (!r?.client_id) { alert('This referral has no client record to edit.'); return; }
+  const val = k => document.getElementById('ce-' + k)?.value.trim() ?? '';
+  const first = val('first'), last = val('last');
+  if (!first && !last) { alert('The client needs a name.'); return; }
+  // The 7am reconcile and every wishlist submission check the sheet's name
+  // against this one, and a name with no word in common reads as a mix-up:
+  // the wishlist is refused and the morning report says the numbering drifted.
+  if (!sharesNameWord(clientName(r.clients), first + ' ' + last) &&
+      !confirm('"' + first + ' ' + last + '" has no name in common with "' + clientName(r.clients) + '".\n\n'
+             + 'The sheet still has the old name, so a wishlist sent under it will be refused '
+             + 'and the morning report will flag this referral. Save anyway?')) return;
+
+  const { error } = await db.from('clients').update({
+    first_name: first || null,
+    last_name:  last || null,
+    phone:      normalisePhone(val('phone')),
+    client_secondary_contact: val('secondary') || null,
+    vulnerable: !!document.getElementById('ce-vuln')?.checked,
+  }).eq('id', r.client_id);
+  if (error) { alert('Save failed: ' + error.message); return; }
+
+  const lift = val('lift');
+  editingSection = null;
+  await patchReferral(id, {
+    can_help_lift: lift === 'yes' ? true : lift === 'no' ? false : null,
+    crisis_other_detail: val('crisis') || null,
+    client_notes: val('notes'),   // '' is a decision, not a blank: see clientNotes
+  });
+  await loadReferrals();   // the client row is shared by its other referrals
 }
 
 async function savePayment(id) {
