@@ -2405,6 +2405,11 @@ async function convertFulfilment(referralId, want) {
 // app — a deployment frozen at publish time that only admin can republish — a
 // trigger runs whatever was last pushed, so a new action works straight away.
 async function runAdminJob(action, args) {
+  // runAdminJobs only works 8–11am (adminJobsOpen_ in DraftEmail.gs), so say so
+  // rather than queue a job that would sit until tomorrow.
+  const hour = +new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23',
+                                                  timeZone: 'Europe/London' }).format(new Date());
+  if (hour < 8 || hour >= 11) throw new Error('This only runs between 8am and 11am. Try again then.');
   const { data: job, error } = await db.from('admin_jobs')
     .insert({ action, args }).select('id').single();
   if (error) throw new Error(error.message);
