@@ -2400,22 +2400,34 @@ async function convertFulfilment(referralId, want) {
   }
 }
 
+// Runs a web* action in DraftEmail.gs through Supabase's admin_jobs queue,
+// which a one-minute Apps Script trigger drains (runAdminJobs). Unlike the web
+// app — a deployment frozen at publish time that only admin can republish — a
+// trigger runs whatever was last pushed, so a new action works straight away.
+async function runAdminJob(action, args) {
+  const { data: job, error } = await db.from('admin_jobs')
+    .insert({ action, args }).select('id').single();
+  if (error) throw new Error(error.message);
+  const deadline = Date.now() + 3 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 4000));
+    const { data: j, error: e } = await db.from('admin_jobs')
+      .select('status,result').eq('id', job.id).single();
+    if (e) throw new Error(e.message);
+    if (j.status === 'done' || j.status === 'error') return j.result || {};
+  }
+  throw new Error('Nothing has picked this up after 3 minutes (job ' + job.id + '). '
+    + 'It may still run — reload in a few minutes before trying again.');
+}
+
 // For a wishlist submitted under the wrong number: once admin corrects column B
 // of "Form responses 2 New", this replays that row (webImportWishlist in
 // DraftEmail.gs). A sheet edit never re-fires the form-submit trigger.
 async function importWishlist(referralId) {
-  if (typeof DRAFT_EMAIL_WEBAPP_URL === 'undefined' || !DRAFT_EMAIL_WEBAPP_URL) {
-    alert('The Apps Script web app URL is not configured (DRAFT_EMAIL_WEBAPP_URL in config.js).');
-    return;
-  }
   const btn = document.getElementById('wl-import-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing… (up to a minute)'; }
   try {
-    const { data: { session } } = await db.auth.getSession();
-    const call = async (extra) => (await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST',
-      body: JSON.stringify({ token: session.access_token, action: 'importWishlist',
-                             referral_id: referralId, ...extra }) })).json();
-    let out = await call({});
+    let out = await runAdminJob('importWishlist', { referral_id: referralId });
     // The name typed on the form is not this referral's client. Often harmless
     // (a nickname, a married name, a support worker filling it in) — her call.
     if (out.name_mismatch) {
@@ -2424,7 +2436,7 @@ async function importWishlist(referralId) {
           + 'Wishlist (row ' + m.row + ' of Form responses 2 New) is signed:\n    ' + (m.typed || '(blank)') + '\n'
           + '#' + m.number + ' belongs to:\n    ' + (m.held || '(no name on file)') + '\n\n'
           + 'Import this wishlist onto #' + m.number + ' anyway?')) return;
-      out = await call({ confirm_name: true });
+      out = await runAdminJob('importWishlist', { referral_id: referralId, confirm_name: true });
     }
     if (out.error) throw new Error(out.error);
     await loadReferrals();
