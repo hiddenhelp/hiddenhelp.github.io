@@ -875,6 +875,7 @@ a { color: inherit; text-decoration: none; }
 .plan-col-miles { width: 96px; text-align: right; }
 .plan-col-load { width: 104px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
 .plan-col-actions { width: 236px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.plan-big { color: var(--red); font-weight: 700; }
 .plan-alt { font-size: 11px; color: var(--text3); white-space: nowrap; }
 .plan-list-head .plan-row-nums { white-space: normal; line-height: 1.3; align-items: flex-end; }
 .plan-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
@@ -1615,11 +1616,14 @@ function planItemsHtml(r) {
   const qty = it => Number(it.quantity) || 1;
   const pts = it => LOAD_POINTS[loadKey(it.description)];
   const line = it => `${qty(it) > 1 ? qty(it) + ' x ' : ''}${esc(it.description)}`;
-  const big = items.filter(it => pts(it) != null).sort((a, b) => qty(b) * pts(b) - qty(a) * pts(a));
+  const counted = it => RARELY_STOCKED.includes(loadKey(it.description)) ? 0 : givenQty(it) * pts(it);
+  const big = items.filter(it => pts(it) != null).sort((a, b) => counted(b) - counted(a));
+  const note = it => RARELY_STOCKED.includes(loadKey(it.description)) ? ', rarely in stock, not counted'
+    : givenQty(it) < qty(it) ? `, ${givenQty(it)} given at most` : '';
   const small = items.filter(it => pts(it) == null);
   return `<div class="plan-items" onclick="event.stopPropagation()">
     ${big.length ? `<div class="plan-items-head">Unit A</div>
-      <div class="plan-items-big">${big.map(it => `<span>${line(it)} <span class="plan-muted">${qty(it) * pts(it)}</span></span>`).join('')}</div>` : ''}
+      <div class="plan-items-big">${big.map(it => `<span>${line(it)} <span class="plan-muted">${counted(it)}${note(it)}</span></span>`).join('')}</div>` : ''}
     ${small.length ? `<div class="plan-items-head">Other items: ${small.reduce((t, it) => t + qty(it), 0)}, ${(small.reduce((t, it) => t + qty(it), 0) * LOAD_OTHER).toFixed(1).replace(/\.0$/, '')} pts</div>
       <div class="plan-muted">${small.map(line).join(', ')}</div>` : ''}
     ${items.length ? '' : '<div class="plan-muted">No items on the wishlist.</div>'}
@@ -1652,11 +1656,21 @@ function loadKey(s) {          // order.mjs normName: what the Unit A list match
 // also gives each load without them (Richard, 17 Oct 2026: sideboards).
 const RARELY_STOCKED = ['sideboard'];
 
+// Most of an item ever given, whatever the wishlist asks for. Chests of
+// drawers are so short that nobody gets more than one (Richard, 17 Oct 2026).
+const MAX_GIVEN = { 'chest of drawers': 1 };
+const givenQty = it => Math.min(Number(it.quantity) || 1, MAX_GIVEN[loadKey(it.description)] ?? Infinity);
+
 function loadScore(items, withoutRare = false) {
   return (items || []).filter(it => !it.free_text && it.category)
     .filter(it => !(withoutRare && RARELY_STOCKED.includes(loadKey(it.description))))
-    .reduce((t, it) => t + (Number(it.quantity) || 1) * (LOAD_POINTS[loadKey(it.description)] ?? LOAD_OTHER), 0);
+    .reduce((t, it) => t + givenQty(it) * (LOAD_POINTS[loadKey(it.description)] ?? LOAD_OTHER), 0);
 }
+// The figure the planner plans with: without rarely-stocked items, so fit,
+// Big order and the van total all assume no sideboard goes (Richard, 17 Oct 2026).
+const planLoad = r => loadScore(r.wishlist_items, true);
+const isBigOrder = r => planLoad(r) > VAN_CAPACITY;
+const bigTitle = 'Big order: over a van as requested. What goes depends on what was gathered';
 // How many of each rarely-stocked item a wishlist asks for: { sideboard: 2 }.
 function rareItems(items) {
   const out = {};
@@ -1810,7 +1824,8 @@ function renderPlanner() {
   const van = planVan();
   const vanStops = van.map(r => planIdx(r.id));
   const route = bestRoute(vanStops, m);
-  const load = van.reduce((t, r) => t + loadScore(r.wishlist_items), 0);
+  const load = van.reduce((t, r) => t + planLoad(r), 0);
+  const loadFull = van.reduce((t, r) => t + loadScore(r.wishlist_items), 0);
   const approx = planMatrix.approx ? ' (approx.)' : '';
   const name = r => [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
   const town = r => [postTown(r.clients), (r.clients?.postcode || '').toUpperCase()].filter(Boolean).join(', ');
@@ -1823,14 +1838,13 @@ function renderPlanner() {
       <div class="plan-drivers">Drivers free: AM ${esc(planDrivers.am.join(', ') || 'none recorded')} · PM ${esc(planDrivers.pm.join(', ') || 'none recorded')}</div>
       <div class="plan-load ${load > VAN_CAPACITY ? 'over' : ''}">
         <div class="plan-load-bar"><span style="width:${pct}%"></span></div>
-        <div>${Math.round(load)} of ${VAN_CAPACITY} points${(l => l < load ? ` (${Math.round(l)} without ${RARELY_STOCKED.join(' or ')}s)` : '')(van.reduce((t, r) => t + loadScore(r.wishlist_items, true), 0))}${load > VAN_CAPACITY
-          ? (van.some(r => loadScore(r.wishlist_items) > VAN_CAPACITY) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}</div>
+        <div>${Math.round(load)} of ${VAN_CAPACITY} points${loadFull > load ? ` (${Math.round(loadFull)} with ${RARELY_STOCKED.join(' or ')}s)` : ''}${load > VAN_CAPACITY
+          ? (van.some(isBigOrder) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}</div>
       </div>
       ${van.length ? `
         <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
-          <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span>
+          <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} ·</span> <span class="${isBigOrder(r) ? 'plan-big' : 'plan-muted'}"${isBigOrder(r) ? ` title="${bigTitle}"` : ''}>${Math.round(planLoad(r))} pts</span>
             <div class="plan-stop-actions">
-            ${loadScore(r.wishlist_items) > VAN_CAPACITY ? '<span class="tag tag-wishlist">Big order</span>' : ''}
             ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
             ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
             ${planItemsBtn(r)}
@@ -1855,7 +1869,7 @@ function renderPlanner() {
   const rows = cands.filter(r => !van.includes(r)).map(r => {
     const i = planIdx(r.id);
     const extra = bestRoute([...vanStops, i], m).miles - route.miles;
-    const pts = loadScore(r.wishlist_items);
+    const pts = planLoad(r);
     const big = pts > VAN_CAPACITY;
     return { r, extra, pts, big, fits: (big && !van.length) || load + pts <= VAN_CAPACITY };
   }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
@@ -1875,14 +1889,13 @@ function renderPlanner() {
           <div class="plan-row-who"><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted" style="white-space:nowrap">${esc(town(r))}</span></div>
           <div class="plan-row-nums">
             <span class="plan-col-miles">${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-            <span class="plan-col-load ${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : " · won't fit"}${rare
-              ? `<span class="plan-alt">${Math.round(loadScore(r.wishlist_items, true))} no ${Object.keys(rare).join(', ')}</span>` : ''}</span>
+            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span>${rare
+              ? `<span class="plan-alt">${Math.round(loadScore(r.wishlist_items))} with ${Object.keys(rare).join(', ')}</span>` : ''}</span>
             <span class="plan-col-actions">${planItemsBtn(r)}${planDateCell(r)}</span>
           </div>
         </div>
         <div class="plan-row-tags">
           ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
-          ${big ? `<span class="tag tag-wishlist" title="Over a van as requested; what actually goes depends on what was gathered">Big order: check what's gathered</span>` : ''}
           ${rare ? Object.entries(rare).map(([k, n]) => `<span class="tag tag-rejected" title="Rarely in stock">${titleCase(k)}${n > 1 ? ' x' + n : ''}</span>`).join('') : ''}
           ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
         </div>
@@ -1932,7 +1945,7 @@ function renderPlanMap(cands, van, route) {
     const c = inVan ? colour('--blue') : r.gathered_at ? colour('--green') : colour('--amber');
     L.circleMarker([r.clients.latitude, r.clients.longitude],
       { radius: inVan ? 10 : 7, color: c, fillColor: c, fillOpacity: inVan ? .9 : .5, weight: 2 })
-      .bindTooltip(`#${r.referral_number} ${esc(r.clients.postcode || '')} · ${Math.round(loadScore(r.wishlist_items))} pts`)
+      .bindTooltip(`#${r.referral_number} ${esc(r.clients.postcode || '')} · ${Math.round(planLoad(r))} pts`)
       .on('click', () => togglePlan(r.id))
       .addTo(planLayer);
   }
