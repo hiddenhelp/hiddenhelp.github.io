@@ -1575,7 +1575,12 @@ const LOAD_POINTS = {
   'wall art small': 0.5
 };
 const LOAD_OTHER   = 0.1;    // every item not listed: one box per ten
-const VAN_CAPACITY = 65;     // long-wheelbase Transit, ~400 cu ft, ~65 usable
+// Long-wheelbase Transit: ~80 points of space with a medium roof, ~95 high.
+// Was 65, an allowance for loose packing, until the item scores themselves
+// took packing into account (chairs stack, things pack round tables); 80 set
+// 17 Oct 2026 with the roof height unconfirmed. Of 302 completed deliveries,
+// 2% score over 80.
+const VAN_CAPACITY = 80;
 const HQ = [50.25854, -5.19544];   // hh_utils.py HQ_LAT / HQ_LON
 
 let planDay     = null;        // 'YYYY-MM-DD' being planned
