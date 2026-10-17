@@ -1884,7 +1884,8 @@ function renderPlanner() {
       </div>
     </div>
     ${rows.map(({ r, extra, pts, big, fits }) => { const rare = Object.keys(rareItems(r.wishlist_items)).length ? rareItems(r.wishlist_items) : null; return `
-      <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})">
+      <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})"
+        onmouseenter="planHighlight(${r.id}, true)" onmouseleave="planHighlight(${r.id}, false)">
         <div class="plan-row-top">
           <div class="plan-row-who"><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted" style="white-space:nowrap">${esc(town(r))}</span></div>
           <div class="plan-row-nums">
@@ -1940,14 +1941,31 @@ function renderPlanMap(cands, van, route) {
     L.polyline([0, ...route.order, 0].map(ll), { color: colour('--blue'), weight: 3, opacity: .7, dashArray: '6 6' })
       .addTo(planLayer);
   }
+  planMarkers = {};
   for (const r of cands) {
     const inVan = van.includes(r);
     const c = inVan ? colour('--blue') : r.gathered_at ? colour('--green') : colour('--amber');
-    L.circleMarker([r.clients.latitude, r.clients.longitude],
-      { radius: inVan ? 10 : 7, color: c, fillColor: c, fillOpacity: inVan ? .9 : .5, weight: 2 })
+    const style = { radius: inVan ? 10 : 7, color: c, fillColor: c, fillOpacity: inVan ? .9 : .5, weight: 2 };
+    const m = L.circleMarker([r.clients.latitude, r.clients.longitude], style)
       .bindTooltip(`#${r.referral_number} ${esc(r.clients.postcode || '')} · ${Math.round(planLoad(r))} pts`)
       .on('click', () => togglePlan(r.id))
       .addTo(planLayer);
+    planMarkers[r.id] = { m, style };
+  }
+}
+
+// Hovering a row picks out its pin: bigger, dark ring, on top, label showing.
+let planMarkers = {};
+function planHighlight(id, on) {
+  const p = planMarkers[id];
+  if (!p) return;
+  if (on) {
+    p.m.setStyle({ radius: p.style.radius + 5, weight: 4, color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim(), fillOpacity: 1 });
+    p.m.bringToFront();
+    p.m.openTooltip();
+  } else {
+    p.m.setStyle(p.style);
+    p.m.closeTooltip();
   }
 }
 
