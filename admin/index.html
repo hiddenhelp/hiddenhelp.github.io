@@ -864,6 +864,12 @@ a { color: inherit; text-decoration: none; }
 .vol-checks { display: flex; gap: 18px; align-items: center; grid-column: 1 / -1; }
 .vol-checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text2); cursor: pointer; }
 .vol-hint { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.vol-subhead { grid-column: 1 / -1; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; margin-top: 6px; }
+.dbs-ok { color: var(--text2); }
+.dbs-off { color: var(--text3); }
+.dbs-warn, .dbs-bad { display: inline-flex; gap: 4px; align-items: center; }
+.dbs-warn { color: var(--amber); }
+.dbs-bad { color: var(--red); font-weight: 500; }
 body.mobile .volunteers-view { padding: 14px; }
 body.mobile .vol-edit-grid { grid-template-columns: 1fr; }
 
@@ -1233,7 +1239,8 @@ function setVolFilter(f) {
 
 function volEditForm(v) {
   const isNew = !v.id;
-  return `<td colspan="6" class="vol-edit-form" onclick="event.stopPropagation()">
+  const dbsOpt = (val, label) => `<option value="${val}"${(v.dbs_check || '') === val ? ' selected' : ''}>${label}</option>`;
+  return `<td colspan="7" class="vol-edit-form" onclick="event.stopPropagation()">
     <div class="vol-edit-grid">
       <div class="vol-field"><label>Name</label><input class="vol-input" id="vf-name" value="${esc(v.name || '')}"></div>
       <div class="vol-field"><label>Phone</label><input class="vol-input" id="vf-phone" value="${esc(v.phone || '')}"></div>
@@ -1244,16 +1251,54 @@ function volEditForm(v) {
       <div class="vol-field"><label>Telegram username</label><input class="vol-input" id="vf-tguser" value="${esc(v.telegram_username || '')}"></div>
       <div class="vol-field" style="grid-column:1/-1"><label>Notes</label><textarea class="vol-textarea" id="vf-notes">${esc(v.notes || '')}</textarea></div>
       <div class="vol-checks">
-        <label><input type="checkbox" id="vf-drive" ${v.can_drive ? 'checked' : ''}> Driver</label>
+        <label><input type="checkbox" id="vf-drive" ${v.can_drive ? 'checked' : ''} onchange="volDbsShow()"> Driver</label>
         <label><input type="checkbox" id="vf-gather" ${v.can_gather ? 'checked' : ''}> Gatherer</label>
         <label><input type="checkbox" id="vf-active" ${v.active !== false ? 'checked' : ''}> Active</label>
       </div>
+      <div class="vol-field" id="vf-dbs-wrap" ${v.can_drive ? '' : 'style="display:none"'}>
+        <label>DBS check</label>
+        <select class="vol-input" id="vf-dbs" onchange="volDbsShow()">
+          ${dbsOpt('', 'Not recorded')}${dbsOpt('yes', 'Yes')}${dbsOpt('no', 'No')}${dbsOpt('not_required', 'Not required')}
+        </select>
+      </div>
+      <div class="vol-field" id="vf-dbs-exp-wrap" ${v.can_drive && v.dbs_check === 'yes' ? '' : 'style="display:none"'}>
+        <label>DBS expiry date</label><input class="vol-input" type="date" id="vf-dbs-exp" value="${esc(v.dbs_expiry || '')}">
+      </div>
+      <div class="vol-subhead">Next of kin</div>
+      <div class="vol-field"><label>Name</label><input class="vol-input" id="vf-nok-name" value="${esc(v.nok_name || '')}"></div>
+      <div class="vol-field"><label>Relationship</label><input class="vol-input" id="vf-nok-rel" value="${esc(v.nok_relationship || '')}"></div>
+      <div class="vol-field"><label>Contact phone</label><input class="vol-input" id="vf-nok-phone" inputmode="tel" value="${esc(v.nok_phone || '')}"></div>
     </div>
     <div class="edit-actions">
       <button class="btn-save-edit" onclick="saveVolunteerRecord(${isNew ? 'null' : v.id})">${isNew ? 'Add volunteer' : 'Save'}</button>
       <button class="btn-cancel-edit" onclick="editingVolId=null;renderVolunteers()">Cancel</button>
     </div>
   </td>`;
+}
+
+// DBS applies to drivers only, and the expiry only to a "yes". Hidden fields
+// keep their values, so unticking Driver by mistake loses nothing.
+function volDbsShow() {
+  const driver = document.getElementById('vf-drive').checked;
+  document.getElementById('vf-dbs-wrap').style.display = driver ? '' : 'none';
+  document.getElementById('vf-dbs-exp-wrap').style.display =
+    driver && document.getElementById('vf-dbs').value === 'yes' ? '' : 'none';
+}
+
+// The table's DBS cell. Flags an expired check, one due within 60 days, a
+// "No", and a "Yes" with no expiry date. Pure, so test_dashboard.js pins it.
+function dbsStatus(v, today = new Date()) {
+  if (!v.can_drive) return { text: '', level: '' };
+  if (v.dbs_check === 'not_required') return { text: 'Not required', level: '' };
+  if (v.dbs_check === 'no')  return { text: 'No', level: 'warn' };
+  if (v.dbs_check !== 'yes') return { text: 'Not recorded', level: 'off' };
+  if (!v.dbs_expiry)         return { text: 'Yes, no expiry date', level: 'warn' };
+  const exp = parseYmd(v.dbs_expiry);
+  const days = Math.round((exp - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+  const when = `${exp.getDate()} ${MONTH_NAMES[exp.getMonth()]} ${exp.getFullYear()}`;
+  if (days < 0)   return { text: `Expired ${when}`, level: 'bad' };
+  if (days <= 60) return { text: `Expires ${when}`, level: 'warn' };
+  return { text: `Yes, to ${when}`, level: '' };
 }
 
 function renderVolunteers() {
@@ -1268,6 +1313,7 @@ function renderVolunteers() {
         <td style="white-space:nowrap">${fmtPhone(v.phone)}${phoneWarn(v.phone)}</td>
         <td>${flag(v.can_drive)}</td>
         <td>${flag(v.can_gather)}</td>
+        <td style="white-space:nowrap">${(st => st.text ? `<span class="dbs-${st.level || 'ok'}">${st.level === 'bad' || st.level === 'warn' ? ICONS.warn : ''}${esc(st.text)}</span>` : '')(dbsStatus(v))}</td>
         <td>${v.telegram_user_id ? `<span class="vol-flag">✓</span> ${esc(v.telegram_username ? '@' + v.telegram_username.replace(/^@/, '') : '')}` : '<span class="vol-flag-off">Not linked</span>'}</td>
         <td style="color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.notes || '')}</td>
       </tr>`).join('');
@@ -1281,10 +1327,10 @@ function renderVolunteers() {
     </div>
     <div class="vol-table-wrap">
       <table class="vol-table">
-        <thead><tr><th>Name</th><th>Phone</th><th>Driver</th><th>Gatherer</th><th>Telegram</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Name</th><th>Phone</th><th>Driver</th><th>Gatherer</th><th>DBS</th><th>Telegram</th><th>Notes</th></tr></thead>
         <tbody>
           ${editingVolId === 'new' ? `<tr>${volEditForm({})}</tr>` : ''}
-          ${rows || `<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px">No volunteers</td></tr>`}
+          ${rows || `<tr><td colspan="7" style="color:var(--text3);text-align:center;padding:24px">No volunteers</td></tr>`}
         </tbody>
       </table>
     </div>`;
@@ -1441,6 +1487,11 @@ async function saveVolunteerRecord(id) {
     telegram_user_id: tgidRaw ? Number(tgidRaw) : null,
     telegram_username: document.getElementById('vf-tguser').value.trim().replace(/^@/, '') || null,
     notes: document.getElementById('vf-notes').value.trim() || null,
+    dbs_check:  document.getElementById('vf-dbs').value || null,
+    dbs_expiry: (document.getElementById('vf-dbs').value === 'yes' && document.getElementById('vf-dbs-exp').value) || null,
+    nok_name:         document.getElementById('vf-nok-name').value.trim() || null,
+    nok_relationship: document.getElementById('vf-nok-rel').value.trim() || null,
+    nok_phone:        normalisePhone(document.getElementById('vf-nok-phone').value),
     can_drive:  document.getElementById('vf-drive').checked,
     can_gather: document.getElementById('vf-gather').checked,
     active:     document.getElementById('vf-active').checked,
