@@ -1537,15 +1537,15 @@ function renderAvailability() {
 // requested, not what was gathered, so a score overstates the real load.
 // ponytail: hard-coded; move to a table when admins want to tune it themselves.
 const LOAD_POINTS = {
-  'bunk bed': 7,
   'double bed base': 7,
   'arm chair': 6,
-  'dining table': 6,
   'sideboard': 6,
   'desk': 5,
   'double mattress': 5,
   'fridge freezer': 5,
+  'bunk bed': 4,
   'chest of drawers': 4,
+  'dining table': 4,
   'dressing tables': 4,
   'single bed base': 4,
   'small kitchen table': 4,
@@ -1557,21 +1557,21 @@ const LOAD_POINTS = {
   'single mattress': 3,
   'bar stools': 2,
   'bedside table': 2,
-  'dining chair': 2,
   'foot stool': 2,
   'side table': 2,
-  'tv large': 2,
   'tv stand': 2,
-  'floor lamp': 1,
-  'microwave': 1,
-  'mirror': 1,
-  'portable heater (electric)': 1,
-  'rug large': 1,
-  'small stool': 1,
+  'dining chair': 1,
+  'tv large': 1,
   'tv small': 1,
-  'vacuum': 1,
-  'wall art large': 1,
+  'floor lamp': 0.5,
+  'microwave': 0.5,
+  'mirror': 0.5,
+  'portable heater (electric)': 0.5,
+  'rug large': 0.5,
   'rug small': 0.5,
+  'small stool': 0.5,
+  'vacuum': 0.5,
+  'wall art large': 0.5,
   'wall art small': 0.5
 };
 const LOAD_OTHER   = 0.1;    // every item not listed: one box per ten
@@ -1787,7 +1787,7 @@ function renderPlanner() {
   const load = van.reduce((t, r) => t + loadScore(r.wishlist_items), 0);
   const approx = planMatrix.approx ? ' (approx.)' : '';
   const name = r => [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
-  const town = r => (r.clients?.postcode || '').toUpperCase();
+  const town = r => [postTown(r.clients), (r.clients?.postcode || '').toUpperCase()].filter(Boolean).join(', ');
   const pct = Math.min(100, Math.round(100 * load / VAN_CAPACITY));
   const unbooked = van.filter(r => planAdded.has(r.id)).length;
 
@@ -1819,14 +1819,16 @@ function renderPlanner() {
   //
   // A delivery over a van on its own is a BIG ORDER, not "too big": the
   // wishlist is what was asked for, and a whole-house wishlist rarely goes in
-  // full (Richard, 17 Oct 2026). Only the admin knows what was gathered, so it
-  // is flagged and left addable, never greyed out.
+  // full (Richard, 17 Oct 2026). Only the admin knows what was gathered, so
+  // into an EMPTY van it is never greyed out. Once the van has something in
+  // it, it greys out like anything else that would overfill it. Every row
+  // stays clickable either way.
   const rows = cands.filter(r => !van.includes(r)).map(r => {
     const i = planIdx(r.id);
     const extra = bestRoute([...vanStops, i], m).miles - route.miles;
     const pts = loadScore(r.wishlist_items);
     const big = pts > VAN_CAPACITY;
-    return { r, extra, pts, big, fits: big || load + pts <= VAN_CAPACITY };
+    return { r, extra, pts, big, fits: (big && !van.length) || load + pts <= VAN_CAPACITY };
   }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
 
   document.getElementById('plan-list').innerHTML = `
