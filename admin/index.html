@@ -865,11 +865,15 @@ a { color: inherit; text-decoration: none; }
 .plan-book { align-self: flex-start; }
 .plan-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .plan-list-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.plan-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--bg2); cursor: pointer; font-size: 13px; }
+.plan-row { display: flex; flex-direction: column; gap: 5px; padding: 9px 12px; border-bottom: 1px solid var(--bg2); cursor: pointer; font-size: 13px; }
 .plan-row:last-child { border-bottom: none; }
 .plan-row:hover { background: var(--bg); }
-.plan-row-main { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.plan-row-top { display: flex; gap: 6px 10px; justify-content: space-between; align-items: center; }
+.plan-row-who { flex: 1; min-width: 0; }
+.plan-row-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.plan-row-tags:empty { display: none; }
 .plan-row-nums { display: flex; gap: 10px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plan-num { min-width: 52px; text-align: right; }
 .plan-nofit { opacity: .6; }
 .plan-items { flex-basis: 100%; cursor: default; display: flex; flex-direction: column; gap: 4px; padding: 6px 0 2px; font-size: 12px; line-height: 1.5; }
 .plan-items-head { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; margin-top: 4px; }
@@ -883,7 +887,10 @@ a { color: inherit; text-decoration: none; }
   .plan-grid { grid-template-columns: 1fr; }
   .plan-side { position: static; }
   .plan-map { height: 280px; }
-  .plan-row { flex-direction: column; align-items: flex-start; }
+  .plan-row-top { flex-wrap: wrap; }
+  .plan-row-who { flex-basis: 100%; }
+  .plan-row-nums { flex-wrap: wrap; white-space: normal; }
+  .plan-num { min-width: 0; }
 }
 /* Names stay put while the week scrolls sideways on a phone. */
 /* Only the name column: the second header row's first cell is Monday's "AM". */
@@ -1606,6 +1613,23 @@ function planItemsHtml(r) {
     ${items.length ? '' : '<div class="plan-muted">No items on the wishlist.</div>'}
   </div>`;
 }
+// An empty <input type="date"> in Safari shows TODAY in grey, which read as
+// "booked for today" on every row. So an unbooked row gets a button, and the
+// date box only appears once there is a date or the button is pressed.
+let planDateEditing = null;
+function planDateCell(r) {
+  if (!r.scheduled_date && planDateEditing !== r.id)
+    return `<button class="plan-items-btn" onclick="event.stopPropagation(); planEditDate(${r.id})">Set date</button>`;
+  return `<input type="date" class="plan-date" id="plan-date-${r.id}" value="${r.scheduled_date || ''}" title="Booked date: change or clear"
+    onclick="event.stopPropagation()" onchange="planDateEditing = null; setPlanDate(${r.id}, this.value)"
+    onblur="if (!this.value && planDateEditing === ${r.id}) { planDateEditing = null; renderPlanner(); }">`;
+}
+function planEditDate(id) {
+  planDateEditing = id;
+  renderPlanner();
+  const el = document.getElementById('plan-date-' + id);
+  if (el) { el.focus(); try { el.showPicker(); } catch (e) { /* not supported: the focused box is enough */ } }
+}
 const planRefLink = r => `<button class="dup-link" onclick="event.stopPropagation(); openFromPlanner(${r.id})" title="Open the referral">#${r.referral_number}</button>`;
 const planItemsBtn = r => `<button class="plan-items-btn${planOpen.has(r.id) ? ' active' : ''}" onclick="event.stopPropagation(); togglePlanItems(${r.id})">${ICONS.list}<span>Items</span></button>`;
 
@@ -1809,19 +1833,19 @@ function renderPlanner() {
     <div class="plan-list-head">${van.length ? 'Extra miles if added to this van' : 'Round trip from base'}${approx}</div>
     ${rows.map(({ r, extra, pts, big, fits }) => `
       <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})">
-        <div class="plan-row-main">
-          <b>${planRefLink(r)}</b> ${esc(name(r))}
-          <span class="plan-muted">${esc(town(r))}</span>
+        <div class="plan-row-top">
+          <div class="plan-row-who"><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))}</span></div>
+          <div class="plan-row-nums">
+            <span class="plan-num">${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
+            <span class="plan-num ${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span>
+            ${planItemsBtn(r)}
+            ${planDateCell(r)}
+          </div>
+        </div>
+        <div class="plan-row-tags">
           ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
           ${big ? `<span class="tag tag-wishlist" title="Over a van as requested; what actually goes depends on what was gathered">Big order: check what's gathered</span>` : ''}
           ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
-        </div>
-        <div class="plan-row-nums">
-          <span>${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-          <span class="${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span>
-          ${planItemsBtn(r)}
-          <input type="date" class="plan-date" value="${r.scheduled_date || ''}" title="Booked date: change or clear"
-            onclick="event.stopPropagation()" onchange="setPlanDate(${r.id}, this.value)">
         </div>
         ${planOpen.has(r.id) ? planItemsHtml(r) : ''}
       </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery is in this van.</div>'}`;
