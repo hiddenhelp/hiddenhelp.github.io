@@ -1567,7 +1567,7 @@ const LOAD_POINTS = {
   'rug small': 0.5,
   'wall art small': 0.5
 };
-const LOAD_OTHER   = 0.25;   // every item not listed: one box per four
+const LOAD_OTHER   = 0.1;    // every item not listed: one box per ten
 const VAN_CAPACITY = 65;     // long-wheelbase Transit, ~400 cu ft, ~65 usable
 const HQ = [50.25854, -5.19544];   // hh_utils.py HQ_LAT / HQ_LON
 
@@ -1773,11 +1773,13 @@ function renderPlanner() {
       <div class="plan-drivers">Drivers free: AM ${esc(planDrivers.am.join(', ') || 'none recorded')} · PM ${esc(planDrivers.pm.join(', ') || 'none recorded')}</div>
       <div class="plan-load ${load > VAN_CAPACITY ? 'over' : ''}">
         <div class="plan-load-bar"><span style="width:${pct}%"></span></div>
-        <div>${Math.round(load)} of ${VAN_CAPACITY} points${load > VAN_CAPACITY ? ' — over a van' : ''}</div>
+        <div>${Math.round(load)} of ${VAN_CAPACITY} points${load > VAN_CAPACITY
+          ? (van.some(r => loadScore(r.wishlist_items) > VAN_CAPACITY) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}</div>
       </div>
       ${van.length ? `
         <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
           <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span> ${planItemsBtn(r)}
+            ${loadScore(r.wishlist_items) > VAN_CAPACITY ? '<span class="tag tag-wishlist">Big order</span>' : ''}
             ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
             ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
             <button class="plan-x" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number}">×</button>
@@ -1790,26 +1792,33 @@ function renderPlanner() {
 
   // Everything not in the van, ranked by the road it would add to this van's
   // trip (on its own, that is its out-and-back from base).
+  //
+  // A delivery over a van on its own is a BIG ORDER, not "too big": the
+  // wishlist is what was asked for, and a whole-house wishlist rarely goes in
+  // full (Richard, 17 Oct 2026). Only the admin knows what was gathered, so it
+  // is flagged and left addable, never greyed out.
   const rows = cands.filter(r => !van.includes(r)).map(r => {
     const i = planIdx(r.id);
     const extra = bestRoute([...vanStops, i], m).miles - route.miles;
     const pts = loadScore(r.wishlist_items);
-    return { r, extra, pts, fits: load + pts <= VAN_CAPACITY };
+    const big = pts > VAN_CAPACITY;
+    return { r, extra, pts, big, fits: big || load + pts <= VAN_CAPACITY };
   }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
 
   document.getElementById('plan-list').innerHTML = `
     <div class="plan-list-head">${van.length ? 'Extra miles if added to this van' : 'Round trip from base'}${approx}</div>
-    ${rows.map(({ r, extra, pts, fits }) => `
+    ${rows.map(({ r, extra, pts, big, fits }) => `
       <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})">
         <div class="plan-row-main">
           <b>${planRefLink(r)}</b> ${esc(name(r))}
           <span class="plan-muted">${esc(town(r))}</span>
           ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
+          ${big ? `<span class="tag tag-wishlist" title="Over a van as requested; what actually goes depends on what was gathered">Big order: check what's gathered</span>` : ''}
           ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
         </div>
         <div class="plan-row-nums">
           <span>${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-          <span class="${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : ' · too big'}</span>
+          <span class="${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span>
           ${planItemsBtn(r)}
           <input type="date" class="plan-date" value="${r.scheduled_date || ''}" title="Booked date: change or clear"
             onclick="event.stopPropagation()" onchange="setPlanDate(${r.id}, this.value)">
