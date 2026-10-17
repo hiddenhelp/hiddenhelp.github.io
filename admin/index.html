@@ -159,6 +159,7 @@ a { color: inherit; text-decoration: none; }
   transition: background .15s;
 }
 .sign-out-btn:hover { background: var(--bg2); }
+@media (max-width: 600px) { .app-header { height: auto; min-height: 48px; padding: 8px 14px; flex-wrap: wrap; gap: 8px; } }
 
 .app-body {
   flex: 1;
@@ -845,6 +846,39 @@ a { color: inherit; text-decoration: none; }
 .avail-total-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; }
 .avail-week { font-size: 13px; color: var(--text2); white-space: nowrap; }
 .avail-header { flex-wrap: wrap; }
+.plan-grid { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px; align-items: start; max-width: 1200px; }
+.plan-side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
+.plan-map { height: 380px; border: 1px solid var(--border); border-radius: var(--radius); }
+.plan-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.plan-panel-head { font-weight: 600; font-size: 15px; }
+.plan-drivers, .plan-muted { font-size: 12px; color: var(--text3); }
+.plan-load { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.plan-load-bar { height: 8px; background: var(--bg2); border-radius: 4px; overflow: hidden; }
+.plan-load-bar span { display: block; height: 100%; background: var(--green); }
+.plan-load.over .plan-load-bar span { background: var(--red); }
+.plan-load.over { color: var(--red); font-weight: 500; }
+.plan-stops { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.plan-stops li { position: relative; padding-right: 24px; }
+.plan-x { position: absolute; right: 0; top: -2px; font-size: 16px; color: var(--text3); padding: 0 4px; }
+.plan-x:hover { color: var(--red); }
+.plan-book { align-self: flex-start; }
+.plan-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.plan-list-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.plan-row { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--bg2); cursor: pointer; font-size: 13px; }
+.plan-row:last-child { border-bottom: none; }
+.plan-row:hover { background: var(--bg); }
+.plan-row-main { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.plan-row-nums { display: flex; gap: 10px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plan-nofit { opacity: .6; }
+.plan-over { color: var(--red); }
+.plan-date { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
+.plan-day { width: auto; max-width: 160px; display: inline-block; margin-left: 6px; }
+@media (max-width: 800px) {
+  .plan-grid { grid-template-columns: 1fr; }
+  .plan-side { position: static; }
+  .plan-map { height: 280px; }
+  .plan-row { flex-direction: column; align-items: flex-start; }
+}
 /* Names stay put while the week scrolls sideways on a phone. */
 /* Only the name column: the second header row's first cell is Monday's "AM". */
 .avail-table thead tr:first-child > th:first-child,
@@ -879,7 +913,8 @@ body.mobile input,
 body.mobile textarea,
 body.mobile select { font-size: 16px; }
 
-body.mobile .app-header { height: 54px; padding: 0 14px; }
+/* Four views plus Sign out do not fit one phone-width row: let them wrap. */
+body.mobile .app-header { height: auto; min-height: 54px; padding: 8px 14px; flex-wrap: wrap; gap: 8px; }
 body.mobile .app-logo { font-size: 16px; }
 body.mobile .user-email { display: none; }
 body.mobile .sign-out-btn { font-size: 13px; padding: 8px 13px; }
@@ -975,6 +1010,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
     <button id="nav-referrals" class="sign-out-btn" onclick="setView('referrals')" style="display:none">Referrals</button>
     <button id="nav-volunteers" class="sign-out-btn" onclick="setView('volunteers')">Volunteers</button>
     <button id="nav-availability" class="sign-out-btn" onclick="setView('availability')">Availability</button>
+    <button id="nav-planner" class="sign-out-btn" onclick="setView('planner')">Planner</button>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
   <div class="app-body">
@@ -1020,6 +1056,9 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
     <!-- Availability -->
     <div id="availability-view" class="volunteers-view" style="display:none"></div>
 
+    <!-- Planner -->
+    <div id="planner-view" class="volunteers-view" style="display:none"></div>
+
   </div>
 </div>
 
@@ -1052,7 +1091,7 @@ let duplicateQuery = '';
 let volunteers     = [];
 let formItems      = [];   // what the wishlist form offers now — wishlist_form_items
 
-let currentView   = 'referrals';  // 'referrals' | 'volunteers' | 'availability'
+let currentView   = 'referrals';  // 'referrals' | 'volunteers' | 'availability' | 'planner'
 let allVolunteers = [];
 let editingVolId  = null;         // volunteer id | 'new' | null
 let volFilter     = 'active';     // 'active' | 'all'
@@ -1205,11 +1244,13 @@ function setView(view) {
   document.getElementById('detail').style.display = isRef ? '' : 'none';
   document.getElementById('volunteers-view').style.display = view === 'volunteers' ? 'block' : 'none';
   document.getElementById('availability-view').style.display = view === 'availability' ? 'block' : 'none';
-  // The header offers the two views you are not on.
-  for (const v of ['referrals', 'volunteers', 'availability'])
+  document.getElementById('planner-view').style.display = view === 'planner' ? 'block' : 'none';
+  // The header offers the views you are not on.
+  for (const v of ['referrals', 'volunteers', 'availability', 'planner'])
     document.getElementById('nav-' + v).style.display = v === view ? 'none' : '';
   if (view === 'volunteers') { editingVolId = null; loadAllVolunteers(); }
   if (view === 'availability') loadAvailability();
+  if (view === 'planner') openPlanner();
 }
 
 async function loadAllVolunteers() {
@@ -1471,6 +1512,317 @@ function renderAvailability() {
         <tfoot><tr><td class="avail-total-label">Free</td>${totals}</tr></tfoot>
       </table>
     </div>`;
+}
+
+// ── Planner view ────────────────────────────────────────────
+// Which deliveries go in the van together, on one day at a time. The admin
+// knows who is free; this answers what fits and what is on the way.
+//
+// Load: points per item, 1 point ~ a large removal box (~5 cu ft). A copy of
+// load_points_draft.csv — test_dashboard.js fails if the two differ. Kept
+// pessimistic on purpose (Richard, 17 Oct 2026): a wishlist is what was
+// requested, not what was gathered, so a score overstates the real load.
+// ponytail: hard-coded; move to a table when admins want to tune it themselves.
+const LOAD_POINTS = {
+  'bunk bed': 7,
+  'double bed base': 7,
+  'arm chair': 6,
+  'dining table': 6,
+  'sideboard': 6,
+  'desk': 5,
+  'double mattress': 5,
+  'fridge freezer': 5,
+  'chest of drawers': 4,
+  'dressing tables': 4,
+  'single bed base': 4,
+  'small kitchen table': 4,
+  'coffee table': 3,
+  'desk chair': 3,
+  'freezer': 3,
+  'fridge': 3,
+  'shelving unit': 3,
+  'single mattress': 3,
+  'bar stools': 2,
+  'bedside table': 2,
+  'dining chair': 2,
+  'foot stool': 2,
+  'side table': 2,
+  'tv large': 2,
+  'tv stand': 2,
+  'floor lamp': 1,
+  'microwave': 1,
+  'mirror': 1,
+  'portable heater (electric)': 1,
+  'rug large': 1,
+  'small stool': 1,
+  'tv small': 1,
+  'vacuum': 1,
+  'wall art large': 1,
+  'rug small': 0.5,
+  'wall art small': 0.5
+};
+const LOAD_OTHER   = 0.25;   // every item not listed: one box per four
+const VAN_CAPACITY = 65;     // long-wheelbase Transit, ~400 cu ft, ~65 usable
+const HQ = [50.25854, -5.19544];   // hh_utils.py HQ_LAT / HQ_LON
+
+let planDay     = null;        // 'YYYY-MM-DD' being planned
+let planAdded   = new Set();   // referral ids put in the van, not yet booked
+let planMatrix  = null;        // { key, ids, m: miles[from][to], approx }, index 0 = HQ
+let planDrivers = { am: [], pm: [] };
+let planMap = null, planLayer = null;
+
+function loadKey(s) {          // order.mjs normName: what the Unit A list matches on
+  return String(s ?? '').replace(/['’‘"]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+function loadScore(items) {
+  return (items || []).filter(it => !it.free_text && it.category)
+    .reduce((t, it) => t + (Number(it.quantity) || 1) * (LOAD_POINTS[loadKey(it.description)] ?? LOAD_OTHER), 0);
+}
+
+// Open deliveries with a wishlist in, gathered or not, that have a map location.
+function planCandidates() {
+  return allReferrals.filter(r => r.fulfilment_type === 'delivery' && r.wishlist_submitted_at
+    && !r.completed_at && !r.cancelled_at && !r.duplicate_of && r.referral_number != null
+    && r.clients?.latitude != null && r.clients?.longitude != null);
+}
+
+function haversineMiles([la1, lo1], [la2, lo2]) {
+  const R = 3958.8, rad = x => x * Math.PI / 180;
+  const a = Math.sin(rad(la2 - la1) / 2) ** 2 +
+            Math.cos(rad(la1)) * Math.cos(rad(la2)) * Math.sin(rad(lo2 - lo1) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Road miles between every pair, from the same OSRM table service the pickup
+// suggestions use. One call for all ~15 deliveries. If it fails, straight-line
+// miles x1.3 stand in and the panel says the figures are approximate.
+async function planLoadMatrix(cands) {
+  const key = cands.map(r => r.id).join(',');
+  if (planMatrix?.key === key) return;
+  const ids = cands.map(r => r.id);
+  const pts = [HQ, ...cands.map(r => [Number(r.clients.latitude), Number(r.clients.longitude)])];
+  try {
+    const coords = pts.map(([la, lo]) => `${lo},${la}`).join(';');
+    const res = await fetch(`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`);
+    const j = await res.json();
+    if (j.code !== 'Ok') throw new Error(j.code);
+    planMatrix = { key, ids, m: j.distances.map(row => row.map(x => x / 1609.344)), approx: false };
+  } catch (e) {
+    console.warn('OSRM unavailable, using straight-line estimate:', e);
+    planMatrix = { key, ids, m: pts.map(a => pts.map(b => 1.3 * haversineMiles(a, b))), approx: true };
+  }
+}
+const planIdx = id => planMatrix.ids.indexOf(id) + 1;
+
+// Shortest round trip from base through the stops, by trying every order.
+// ponytail: exhaustive, fine to 7 drops (5040 orders); a van never carries that many.
+function bestRoute(stops, m) {
+  if (!stops.length) return { miles: 0, order: [] };
+  let best = null;
+  const walk = (rest, path, d) => {
+    if (best && d >= best.miles) return;
+    if (!rest.length) { const t = d + m[path[path.length - 1]][0]; if (!best || t < best.miles) best = { miles: t, order: path }; return; }
+    rest.forEach((s, i) => walk(rest.filter((_, j) => j !== i), [...path, s], d + m[path.length ? path[path.length - 1] : 0][s]));
+  };
+  walk(stops, [], 0);
+  return best;
+}
+const separateMiles = (stops, m) => stops.reduce((t, s) => t + m[0][s] + m[s][0], 0);
+
+function planVan() {
+  return planCandidates().filter(r => r.scheduled_date === planDay || planAdded.has(r.id));
+}
+
+// Things a crew needs to know before they agree to a pairing.
+function planFlags(r) {
+  const f = [];
+  if (r.can_help_lift === false) f.push("Can't help lift");
+  const notes = [r.referrer_notes, r.client_notes, r.wishlist_note].filter(Boolean).join(' ');
+  if (/stair|steps|flight|floor|no lift|narrow|parking/i.test(notes)) f.push('Access notes');
+  return f;
+}
+
+function nextWorkingDay(today = new Date()) {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return ymd(d);
+}
+
+async function openPlanner() {
+  planDay = planDay || nextWorkingDay();
+  const el = document.getElementById('planner-view');
+  if (!el.querySelector('#plan-map')) {
+    el.innerHTML = `
+      <div class="vol-view-header avail-header">
+        <h2>Planner</h2>
+        <label class="avail-week">Day <input type="date" class="vol-input plan-day" id="plan-day" onchange="setPlanDay(this.value)"></label>
+      </div>
+      <div class="plan-grid">
+        <div class="plan-side"><div id="plan-van"></div><div id="plan-map" class="plan-map"></div></div>
+        <div id="plan-list" class="plan-list"><div class="loading">Loading…</div></div>
+      </div>`;
+  }
+  document.getElementById('plan-day').value = planDay;
+  await Promise.all([planLoadMatrix(planCandidates()), planLoadDrivers(), planEnsureLeaflet()]);
+  renderPlanner();
+}
+
+function setPlanDay(day) {
+  if (!day) return;
+  planDay = day;
+  planAdded.clear();
+  planLoadDrivers().then(renderPlanner);
+}
+
+async function planLoadDrivers() {
+  const { data } = await db.from('volunteer_availability')
+    .select('slot, volunteers(name, can_drive, active)').eq('day', planDay);
+  planDrivers = { am: [], pm: [] };
+  for (const row of data || []) {
+    const v = row.volunteers;
+    if (v?.can_drive && v.active) planDrivers[row.slot].push(v.name);
+  }
+  planDrivers.am.sort(); planDrivers.pm.sort();
+}
+
+function togglePlan(id) {
+  const r = allReferrals.find(x => x.id === id);
+  if (r.scheduled_date === planDay) {
+    if (confirm(`Unbook #${r.referral_number} from ${fmtDay(planDay)}?`)) setPlanDate(id, null);
+    return;
+  }
+  if (planAdded.has(id)) planAdded.delete(id); else planAdded.add(id);
+  renderPlanner();
+}
+
+// The one write the planner makes: referrals.scheduled_date, which the
+// referral's own card already shows as "Scheduled". Editable from any row.
+async function setPlanDate(id, day) {
+  const { error } = await db.from('referrals').update({ scheduled_date: day || null }).eq('id', id);
+  if (error) { alert('Save failed: ' + error.message); renderPlanner(); return; }
+  const r = allReferrals.find(x => x.id === id);
+  r.scheduled_date = day || null;
+  planAdded.delete(id);
+  renderPlanner();
+}
+
+async function bookPlan() {
+  const ids = [...planAdded];
+  const { error } = await db.from('referrals').update({ scheduled_date: planDay }).in('id', ids);
+  if (error) { alert('Booking failed: ' + error.message); return; }
+  for (const r of allReferrals) if (ids.includes(r.id)) r.scheduled_date = planDay;
+  planAdded.clear();
+  renderPlanner();
+}
+
+function renderPlanner() {
+  if (currentView !== 'planner' || !planMatrix) return;
+  const m = planMatrix.m;
+  const cands = planCandidates();
+  const van = planVan();
+  const vanStops = van.map(r => planIdx(r.id));
+  const route = bestRoute(vanStops, m);
+  const load = van.reduce((t, r) => t + loadScore(r.wishlist_items), 0);
+  const approx = planMatrix.approx ? ' (approx.)' : '';
+  const name = r => [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
+  const town = r => (r.clients?.postcode || '').toUpperCase();
+  const pct = Math.min(100, Math.round(100 * load / VAN_CAPACITY));
+  const unbooked = van.filter(r => planAdded.has(r.id)).length;
+
+  document.getElementById('plan-van').innerHTML = `
+    <div class="plan-panel">
+      <div class="plan-panel-head">Van for ${fmtDay(planDay)}</div>
+      <div class="plan-drivers">Drivers free: AM ${esc(planDrivers.am.join(', ') || 'none recorded')} · PM ${esc(planDrivers.pm.join(', ') || 'none recorded')}</div>
+      <div class="plan-load ${load > VAN_CAPACITY ? 'over' : ''}">
+        <div class="plan-load-bar"><span style="width:${pct}%"></span></div>
+        <div>${Math.round(load)} of ${VAN_CAPACITY} points${load > VAN_CAPACITY ? ' — over a van' : ''}</div>
+      </div>
+      ${van.length ? `
+        <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
+          <li><b>#${r.referral_number}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span>
+            ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
+            ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
+            <button class="plan-x" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number}">×</button></li>`; }).join('')}
+        </ol>
+        <div class="plan-muted">Round trip ${route.miles.toFixed(1)} mi${approx}${van.length > 1 ? `, against ${separateMiles(vanStops, m).toFixed(1)} mi as separate trips` : ''}</div>
+        ${unbooked ? `<button class="btn-save-edit plan-book" onclick="bookPlan()">${ICONS.check}<span>Book ${unbooked} for ${fmtDay(planDay)}</span></button>` : ''}`
+      : '<div class="plan-muted">Tap a delivery in the list or on the map to add it.</div>'}
+    </div>`;
+
+  // Everything not in the van, ranked by the road it would add to this van's
+  // trip (on its own, that is its out-and-back from base).
+  const rows = cands.filter(r => !van.includes(r)).map(r => {
+    const i = planIdx(r.id);
+    const extra = bestRoute([...vanStops, i], m).miles - route.miles;
+    const pts = loadScore(r.wishlist_items);
+    return { r, extra, pts, fits: load + pts <= VAN_CAPACITY };
+  }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
+
+  document.getElementById('plan-list').innerHTML = `
+    <div class="plan-list-head">${van.length ? 'Extra miles if added to this van' : 'Round trip from base'}${approx}</div>
+    ${rows.map(({ r, extra, pts, fits }) => `
+      <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})">
+        <div class="plan-row-main">
+          <b>#${r.referral_number}</b> ${esc(name(r))}
+          <span class="plan-muted">${esc(town(r))}</span>
+          ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
+          ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
+        </div>
+        <div class="plan-row-nums">
+          <span>${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
+          <span class="${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : ' · too big'}</span>
+          <input type="date" class="plan-date" value="${r.scheduled_date || ''}" title="Booked date: change or clear"
+            onclick="event.stopPropagation()" onchange="setPlanDate(${r.id}, this.value)">
+        </div>
+      </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery is in this van.</div>'}`;
+
+  renderPlanMap(cands, van, route);
+}
+
+// Leaflet only loads when the planner is first opened.
+function planEnsureLeaflet() {
+  if (window.L) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    js.onload = resolve; js.onerror = reject;
+    document.head.appendChild(js);
+  });
+}
+
+function renderPlanMap(cands, van, route) {
+  if (!window.L) return;
+  if (!planMap) {
+    planMap = L.map('plan-map', { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(planMap);
+    planLayer = L.layerGroup().addTo(planMap);
+    planMap.fitBounds([HQ, ...cands.map(r => [r.clients.latitude, r.clients.longitude])], { padding: [20, 20] });
+  }
+  planMap.invalidateSize();
+  planLayer.clearLayers();
+  const css = getComputedStyle(document.documentElement);
+  const colour = v => css.getPropertyValue(v).trim();
+  L.circleMarker(HQ, { radius: 7, color: colour('--text'), fillColor: colour('--text'), fillOpacity: 1 })
+    .bindTooltip('Hidden Help').addTo(planLayer);
+  if (van.length) {
+    const ll = i => i === 0 ? HQ : (r => [r.clients.latitude, r.clients.longitude])(cands.find(x => planIdx(x.id) === i));
+    L.polyline([0, ...route.order, 0].map(ll), { color: colour('--blue'), weight: 3, opacity: .7, dashArray: '6 6' })
+      .addTo(planLayer);
+  }
+  for (const r of cands) {
+    const inVan = van.includes(r);
+    const c = inVan ? colour('--blue') : r.gathered_at ? colour('--green') : colour('--amber');
+    L.circleMarker([r.clients.latitude, r.clients.longitude],
+      { radius: inVan ? 10 : 7, color: c, fillColor: c, fillOpacity: inVan ? .9 : .5, weight: 2 })
+      .bindTooltip(`#${r.referral_number} ${esc(r.clients.postcode || '')} · ${Math.round(loadScore(r.wishlist_items))} pts`)
+      .on('click', () => togglePlan(r.id))
+      .addTo(planLayer);
+  }
 }
 
 // NB: saveVolunteer(id, field, selectId) further down writes referral
