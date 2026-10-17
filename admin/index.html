@@ -858,10 +858,9 @@ a { color: inherit; text-decoration: none; }
 .plan-load.over .plan-load-bar span { background: var(--red); }
 .plan-load.over { color: var(--red); font-weight: 500; }
 .plan-stops { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.plan-stops li { position: relative; padding-right: 24px; }
+.plan-stop-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
 .plan-stops .tag { white-space: nowrap; }
-.plan-x { position: absolute; right: 0; top: -2px; font-size: 16px; color: var(--text3); padding: 0 4px; }
-.plan-x:hover { color: var(--red); }
+.plan-remove:hover { color: var(--red); border-color: var(--red); }
 .plan-book { align-self: flex-start; }
 .plan-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .plan-list-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -1121,6 +1120,7 @@ const ICONS = {
   warn:    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17.5" x2="12.01" y2="17.5"/></svg>',
   send:    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>',
   mail:    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="m2.5 7 9.5 6 9.5-6"/></svg>',
+  close:   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   printer: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7"/></svg>',
 };
 
@@ -1802,11 +1802,14 @@ function renderPlanner() {
       </div>
       ${van.length ? `
         <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
-          <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span> ${planItemsBtn(r)}
+          <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span>
+            <div class="plan-stop-actions">
             ${loadScore(r.wishlist_items) > VAN_CAPACITY ? '<span class="tag tag-wishlist">Big order</span>' : ''}
             ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
             ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
-            <button class="plan-x" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number}">×</button>
+            ${planItemsBtn(r)}
+            <button class="plan-items-btn plan-remove" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number} from the van">${ICONS.close}<span>Remove</span></button>
+            </div>
             ${planOpen.has(r.id) ? planItemsHtml(r) : ''}</li>`; }).join('')}
         </ol>
         <div class="plan-muted">Round trip ${route.miles.toFixed(1)} mi${approx}${van.length > 1 ? `, against ${separateMiles(vanStops, m).toFixed(1)} mi as separate trips` : ''}</div>
