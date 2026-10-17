@@ -843,7 +843,6 @@ a { color: inherit; text-decoration: none; }
 .avail-cell.on { background: var(--green); border-color: var(--green); }
 .avail-table tfoot td { border-top: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
 .avail-total-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; }
-.avail-sub { font-size: 10px; color: var(--text3); margin-left: 1px; }
 .avail-week { font-size: 13px; color: var(--text2); white-space: nowrap; }
 .avail-header { flex-wrap: wrap; }
 /* Names stay put while the week scrolls sideways on a phone. */
@@ -1292,7 +1291,7 @@ function renderVolunteers() {
 }
 
 // ── Availability view ───────────────────────────────────────
-// Who is free when, typed in by admin. Replaces the sheet of paper that was
+// Which drivers are free when, typed in by admin. Replaces the sheet of paper that was
 // photographed into the drivers' channel; "Copy summary" makes the text to
 // paste there instead. Admin records it rather than volunteers, because not
 // every driver is on Telegram (a poll was ruled out for that reason).
@@ -1319,10 +1318,11 @@ function nextMonday(today = new Date()) {
   return ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + ahead));
 }
 
-// Drivers first, because they are the scarce ones, then by name.
+// Drivers only: they are the limit on what goes out, and the paper only
+// ever tracked them (Richard, 17 Oct 2026).
 function availPeople() {
-  return allVolunteers.filter(v => v.active)
-    .sort((a, b) => (b.can_drive - a.can_drive) || a.name.localeCompare(b.name));
+  return allVolunteers.filter(v => v.active && v.can_drive)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function loadAvailability() {
@@ -1369,13 +1369,8 @@ function availabilitySummary(people, rows, monday) {
   for (let i = 0; i < 5; i++) {
     const day = addDays(monday, i);
     const slotLine = (slot, label) => {
-      const free = people.filter(p => rows.has(`${p.id}|${day}|${slot}`));
-      if (!free.length) return `${label}: nobody yet`;
-      const drivers = free.filter(p => p.can_drive).map(p => p.name);
-      const helpers = free.filter(p => !p.can_drive).map(p => p.name);
-      return `${label}: ` + [drivers.length ? `Drivers: ${drivers.join(', ')}` : '',
-                             helpers.length ? `Helpers: ${helpers.join(', ')}` : '']
-        .filter(Boolean).join(' | ');
+      const free = people.filter(p => rows.has(`${p.id}|${day}|${slot}`)).map(p => p.name);
+      return `${label}: ${free.length ? free.join(', ') : 'nobody yet'}`;
     };
     lines.push('', fmtDay(day), slotLine('am', 'AM'), slotLine('pm', 'PM'));
   }
@@ -1396,7 +1391,7 @@ function renderAvailability() {
   const slots = days.flatMap(day => [[day, 'am'], [day, 'pm']]);
 
   const rows = people.map(p => `<tr>
-      <td style="white-space:nowrap">${esc(p.name)}${p.can_drive ? ' <span class="tag tag-delivery">Driver</span>' : ''}</td>
+      <td style="white-space:nowrap">${esc(p.name)}</td>
       ${slots.map(([day, slot]) => {
         const on = availRows.has(`${p.id}|${day}|${slot}`);
         return `<td class="avail-td${slot === 'am' ? ' avail-day' : ''}"><button class="avail-cell${on ? ' on' : ''}"
@@ -1406,10 +1401,8 @@ function renderAvailability() {
     </tr>`).join('');
 
   const totals = slots.map(([day, slot]) => {
-    const free = people.filter(p => availRows.has(`${p.id}|${day}|${slot}`));
-    const d = free.filter(p => p.can_drive).length;
-    return `<td class="avail-td avail-total${slot === 'am' ? ' avail-day' : ''}" title="${d} driver(s), ${free.length - d} helper(s)">
-      ${free.length ? `${d}<span class="avail-sub">D</span> ${free.length - d}<span class="avail-sub">H</span>` : '—'}</td>`;
+    const n = people.filter(p => availRows.has(`${p.id}|${day}|${slot}`)).length;
+    return `<td class="avail-td${slot === 'am' ? ' avail-day' : ''}">${n || '—'}</td>`;
   }).join('');
 
   el.innerHTML = `
@@ -1423,11 +1416,11 @@ function renderAvailability() {
     <div class="vol-table-wrap">
       <table class="vol-table avail-table">
         <thead>
-          <tr><th rowspan="2">Volunteer</th>${days.map(d => `<th colspan="2" class="avail-day" style="text-align:center">${fmtDay(d)}</th>`).join('')}</tr>
+          <tr><th rowspan="2">Driver</th>${days.map(d => `<th colspan="2" class="avail-day" style="text-align:center">${fmtDay(d)}</th>`).join('')}</tr>
           <tr>${days.map(() => '<th class="avail-day" style="text-align:center">AM</th><th style="text-align:center">PM</th>').join('')}</tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="11" style="color:var(--text3);text-align:center;padding:24px">No active volunteers</td></tr>`}
+          ${rows || `<tr><td colspan="11" style="color:var(--text3);text-align:center;padding:24px">No active drivers. Tick "Can drive" in Volunteers.</td></tr>`}
         </tbody>
         <tfoot><tr><td class="avail-total-label">Free</td>${totals}</tr></tfoot>
       </table>
