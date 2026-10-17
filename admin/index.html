@@ -1244,8 +1244,8 @@ function volEditForm(v) {
       <div class="vol-field"><label>Telegram username</label><input class="vol-input" id="vf-tguser" value="${esc(v.telegram_username || '')}"></div>
       <div class="vol-field" style="grid-column:1/-1"><label>Notes</label><textarea class="vol-textarea" id="vf-notes">${esc(v.notes || '')}</textarea></div>
       <div class="vol-checks">
-        <label><input type="checkbox" id="vf-drive" ${v.can_drive ? 'checked' : ''}> Can drive</label>
-        <label><input type="checkbox" id="vf-gather" ${v.can_gather ? 'checked' : ''}> Can gather</label>
+        <label><input type="checkbox" id="vf-drive" ${v.can_drive ? 'checked' : ''}> Driver</label>
+        <label><input type="checkbox" id="vf-gather" ${v.can_gather ? 'checked' : ''}> Gatherer</label>
         <label><input type="checkbox" id="vf-active" ${v.active !== false ? 'checked' : ''}> Active</label>
       </div>
     </div>
@@ -1281,7 +1281,7 @@ function renderVolunteers() {
     </div>
     <div class="vol-table-wrap">
       <table class="vol-table">
-        <thead><tr><th>Name</th><th>Phone</th><th>Drive</th><th>Gather</th><th>Telegram</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Name</th><th>Phone</th><th>Driver</th><th>Gatherer</th><th>Telegram</th><th>Notes</th></tr></thead>
         <tbody>
           ${editingVolId === 'new' ? `<tr>${volEditForm({})}</tr>` : ''}
           ${rows || `<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px">No volunteers</td></tr>`}
@@ -1420,7 +1420,7 @@ function renderAvailability() {
           <tr>${days.map(() => '<th class="avail-day" style="text-align:center">AM</th><th style="text-align:center">PM</th>').join('')}</tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="11" style="color:var(--text3);text-align:center;padding:24px">No active drivers. Tick "Can drive" in Volunteers.</td></tr>`}
+          ${rows || `<tr><td colspan="11" style="color:var(--text3);text-align:center;padding:24px">No active drivers. Tick "Driver" in Volunteers.</td></tr>`}
         </tbody>
         <tfoot><tr><td class="avail-total-label">Free</td>${totals}</tr></tfoot>
       </table>
