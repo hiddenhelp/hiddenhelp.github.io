@@ -831,6 +831,26 @@ a { color: inherit; text-decoration: none; }
 .vol-table tbody tr { cursor: pointer; }
 .vol-table tbody tr:hover { background: var(--bg); }
 .vol-row-inactive { opacity: .5; }
+.avail-table tbody tr { cursor: default; }
+.avail-table tbody tr:hover { background: none; }
+.avail-td { padding: 4px 3px !important; text-align: center; }
+.avail-day { border-left: 1px solid var(--border); }
+.avail-cell {
+  width: 32px; height: 28px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+}
+.avail-cell:hover { border-color: var(--text3); }
+.avail-cell.on { background: var(--green); border-color: var(--green); }
+.avail-table tfoot td { border-top: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
+.avail-total-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; }
+.avail-sub { font-size: 10px; color: var(--text3); margin-left: 1px; }
+.avail-week { font-size: 13px; color: var(--text2); white-space: nowrap; }
+.avail-header { flex-wrap: wrap; }
+/* Names stay put while the week scrolls sideways on a phone. */
+/* Only the name column: the second header row's first cell is Monday's "AM". */
+.avail-table thead tr:first-child > th:first-child,
+.avail-table tbody td:first-child,
+.avail-table tfoot td:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
 .vol-flag { color: var(--green); }
 .vol-flag-off { color: var(--text3); }
 .vol-edit-form { padding: 14px 12px; background: var(--bg); cursor: default; }
@@ -947,7 +967,9 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
   <header class="app-header">
     <div class="app-logo">Hidden Help Admin</div>
     <span id="user-email" class="user-email"></span>
-    <button id="view-toggle-btn" class="sign-out-btn" onclick="toggleView()">Volunteers</button>
+    <button id="nav-referrals" class="sign-out-btn" onclick="setView('referrals')" style="display:none">Referrals</button>
+    <button id="nav-volunteers" class="sign-out-btn" onclick="setView('volunteers')">Volunteers</button>
+    <button id="nav-availability" class="sign-out-btn" onclick="setView('availability')">Availability</button>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
   <div class="app-body">
@@ -990,6 +1012,9 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
     <!-- Volunteers -->
     <div id="volunteers-view" class="volunteers-view" style="display:none"></div>
 
+    <!-- Availability -->
+    <div id="availability-view" class="volunteers-view" style="display:none"></div>
+
   </div>
 </div>
 
@@ -1022,7 +1047,7 @@ let duplicateQuery = '';
 let volunteers     = [];
 let formItems      = [];   // what the wishlist form offers now — wishlist_form_items
 
-let currentView   = 'referrals';  // 'referrals' | 'volunteers'
+let currentView   = 'referrals';  // 'referrals' | 'volunteers' | 'availability'
 let allVolunteers = [];
 let editingVolId  = null;         // volunteer id | 'new' | null
 let volFilter     = 'active';     // 'active' | 'all'
@@ -1168,14 +1193,18 @@ function formItemFor(desc) {
 }
 
 // ── Volunteers view ─────────────────────────────────────────
-function toggleView() {
-  currentView = currentView === 'referrals' ? 'volunteers' : 'referrals';
-  const isVol = currentView === 'volunteers';
-  document.getElementById('volunteers-view').style.display = isVol ? 'block' : 'none';
-  document.querySelector('.sidebar').style.display = isVol ? 'none' : '';
-  document.getElementById('detail').style.display = isVol ? 'none' : '';
-  document.getElementById('view-toggle-btn').textContent = isVol ? 'Referrals' : 'Volunteers';
-  if (isVol) { editingVolId = null; loadAllVolunteers(); }
+function setView(view) {
+  currentView = view;
+  const isRef = view === 'referrals';
+  document.querySelector('.sidebar').style.display = isRef ? '' : 'none';
+  document.getElementById('detail').style.display = isRef ? '' : 'none';
+  document.getElementById('volunteers-view').style.display = view === 'volunteers' ? 'block' : 'none';
+  document.getElementById('availability-view').style.display = view === 'availability' ? 'block' : 'none';
+  // The header offers the two views you are not on.
+  for (const v of ['referrals', 'volunteers', 'availability'])
+    document.getElementById('nav-' + v).style.display = v === view ? 'none' : '';
+  if (view === 'volunteers') { editingVolId = null; loadAllVolunteers(); }
+  if (view === 'availability') loadAvailability();
 }
 
 async function loadAllVolunteers() {
@@ -1258,6 +1287,149 @@ function renderVolunteers() {
           ${editingVolId === 'new' ? `<tr>${volEditForm({})}</tr>` : ''}
           ${rows || `<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:24px">No volunteers</td></tr>`}
         </tbody>
+      </table>
+    </div>`;
+}
+
+// ── Availability view ───────────────────────────────────────
+// Who is free when, typed in by admin. Replaces the sheet of paper that was
+// photographed into the drivers' channel; "Copy summary" makes the text to
+// paste there instead. Admin records it rather than volunteers, because not
+// every driver is on Telegram (a poll was ruled out for that reason).
+// A row in volunteer_availability means free; no row means not.
+let availWeek = null;        // Monday of the week shown, 'YYYY-MM-DD'
+let availRows = new Set();   // 'volunteerId|day|slot'
+
+const DAY_NAMES   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Local date, never toISOString: that is UTC, and local midnight in summer
+// time is still the previous day in UTC, which would file Monday under Sunday.
+function ymd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function parseYmd(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(s, n) { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }
+function fmtDay(s) { const d = parseYmd(s); return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`; }
+
+// The coming working week: the next Monday after today, so on a Monday it is
+// next week, not this one. The arrows go back a week for "this week".
+function nextMonday(today = new Date()) {
+  const ahead = (8 - today.getDay()) % 7 || 7;
+  return ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + ahead));
+}
+
+// Drivers first, because they are the scarce ones, then by name.
+function availPeople() {
+  return allVolunteers.filter(v => v.active)
+    .sort((a, b) => (b.can_drive - a.can_drive) || a.name.localeCompare(b.name));
+}
+
+async function loadAvailability() {
+  availWeek = availWeek || nextMonday();
+  const el = document.getElementById('availability-view');
+  el.innerHTML = '<div class="loading">Loading availability…</div>';
+  if (!allVolunteers.length) {
+    const { data } = await db.from('volunteers').select('*').order('name');
+    allVolunteers = data || [];
+  }
+  const { data, error } = await db.from('volunteer_availability')
+    .select('volunteer_id, day, slot').gte('day', availWeek).lte('day', addDays(availWeek, 4));
+  if (error) { el.innerHTML = `<div class="loading">Failed to load: ${esc(error.message)}</div>`; return; }
+  availRows = new Set((data || []).map(r => `${r.volunteer_id}|${r.day}|${r.slot}`));
+  renderAvailability();
+}
+
+function shiftAvailWeek(weeks) {
+  availWeek = addDays(availWeek, 7 * weeks);
+  loadAvailability();
+}
+
+// Saves on every tap, shown at once and put back if the save fails. A
+// duplicate insert means another admin ticked the same box — already true.
+async function toggleAvail(volId, day, slot) {
+  const key = `${volId}|${day}|${slot}`;
+  const on = !availRows.has(key);
+  if (on) availRows.add(key); else availRows.delete(key);
+  renderAvailability();
+  const q = db.from('volunteer_availability');
+  const { error } = on
+    ? await q.insert({ volunteer_id: volId, day, slot })
+    : await q.delete().eq('volunteer_id', volId).eq('day', day).eq('slot', slot);
+  if (error && !(on && error.code === '23505')) {
+    if (on) availRows.delete(key); else availRows.add(key);
+    renderAvailability();
+    alert('Save failed: ' + error.message);
+  }
+}
+
+// The text for the drivers' channel. Pure, so test_dashboard.js can pin it.
+function availabilitySummary(people, rows, monday) {
+  const lines = [`Availability, week of ${fmtDay(monday)}`];
+  for (let i = 0; i < 5; i++) {
+    const day = addDays(monday, i);
+    const slotLine = (slot, label) => {
+      const free = people.filter(p => rows.has(`${p.id}|${day}|${slot}`));
+      if (!free.length) return `${label}: nobody yet`;
+      const drivers = free.filter(p => p.can_drive).map(p => p.name);
+      const helpers = free.filter(p => !p.can_drive).map(p => p.name);
+      return `${label}: ` + [drivers.length ? `Drivers: ${drivers.join(', ')}` : '',
+                             helpers.length ? `Helpers: ${helpers.join(', ')}` : '']
+        .filter(Boolean).join(' | ');
+    };
+    lines.push('', fmtDay(day), slotLine('am', 'AM'), slotLine('pm', 'PM'));
+  }
+  return lines.join('\n');
+}
+
+function copyAvailability() {
+  const text = availabilitySummary(availPeople(), availRows, availWeek);
+  navigator.clipboard.writeText(text).then(() => {
+    flashIconBtn(document.getElementById('avail-copy-btn'), ICONS.check, 'Copied!', ICONS.copy, 'Copy summary');
+  }, () => alert('Could not copy. Your browser blocked the clipboard.'));
+}
+
+function renderAvailability() {
+  const el = document.getElementById('availability-view');
+  const people = availPeople();
+  const days = [0, 1, 2, 3, 4].map(i => addDays(availWeek, i));
+  const slots = days.flatMap(day => [[day, 'am'], [day, 'pm']]);
+
+  const rows = people.map(p => `<tr>
+      <td style="white-space:nowrap">${esc(p.name)}${p.can_drive ? ' <span class="tag tag-delivery">Driver</span>' : ''}</td>
+      ${slots.map(([day, slot]) => {
+        const on = availRows.has(`${p.id}|${day}|${slot}`);
+        return `<td class="avail-td${slot === 'am' ? ' avail-day' : ''}"><button class="avail-cell${on ? ' on' : ''}"
+          aria-pressed="${on}" aria-label="${esc(p.name)} ${fmtDay(day)} ${slot}"
+          onclick="toggleAvail(${p.id}, '${day}', '${slot}')">${on ? ICONS.check : ''}</button></td>`;
+      }).join('')}
+    </tr>`).join('');
+
+  const totals = slots.map(([day, slot]) => {
+    const free = people.filter(p => availRows.has(`${p.id}|${day}|${slot}`));
+    const d = free.filter(p => p.can_drive).length;
+    return `<td class="avail-td avail-total${slot === 'am' ? ' avail-day' : ''}" title="${d} driver(s), ${free.length - d} helper(s)">
+      ${free.length ? `${d}<span class="avail-sub">D</span> ${free.length - d}<span class="avail-sub">H</span>` : '—'}</td>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="vol-view-header avail-header">
+      <h2>Availability</h2>
+      <button class="btn" onclick="shiftAvailWeek(-1)" aria-label="Previous week">‹</button>
+      <span class="avail-week">Week of ${fmtDay(availWeek)}</span>
+      <button class="btn" onclick="shiftAvailWeek(1)" aria-label="Next week">›</button>
+      <button class="btn" id="avail-copy-btn" onclick="copyAvailability()">${ICONS.copy}<span>Copy summary</span></button>
+    </div>
+    <div class="vol-table-wrap">
+      <table class="vol-table avail-table">
+        <thead>
+          <tr><th rowspan="2">Volunteer</th>${days.map(d => `<th colspan="2" class="avail-day" style="text-align:center">${fmtDay(d)}</th>`).join('')}</tr>
+          <tr>${days.map(() => '<th class="avail-day" style="text-align:center">AM</th><th style="text-align:center">PM</th>').join('')}</tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="11" style="color:var(--text3);text-align:center;padding:24px">No active volunteers</td></tr>`}
+        </tbody>
+        <tfoot><tr><td class="avail-total-label">Free</td>${totals}</tr></tfoot>
       </table>
     </div>`;
 }
