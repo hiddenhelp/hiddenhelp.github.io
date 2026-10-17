@@ -859,17 +859,23 @@ a { color: inherit; text-decoration: none; }
 .plan-load.over { color: var(--red); font-weight: 500; }
 .plan-stops { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .plan-stops li { position: relative; padding-right: 24px; }
+.plan-stops .tag { white-space: nowrap; }
 .plan-x { position: absolute; right: 0; top: -2px; font-size: 16px; color: var(--text3); padding: 0 4px; }
 .plan-x:hover { color: var(--red); }
 .plan-book { align-self: flex-start; }
 .plan-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .plan-list-head { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.plan-row { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--bg2); cursor: pointer; font-size: 13px; }
+.plan-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--bg2); cursor: pointer; font-size: 13px; }
 .plan-row:last-child { border-bottom: none; }
 .plan-row:hover { background: var(--bg); }
 .plan-row-main { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .plan-row-nums { display: flex; gap: 10px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .plan-nofit { opacity: .6; }
+.plan-items { flex-basis: 100%; cursor: default; display: flex; flex-direction: column; gap: 4px; padding: 6px 0 2px; font-size: 12px; line-height: 1.5; }
+.plan-items-head { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; margin-top: 4px; }
+.plan-items-big { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.plan-items-btn { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--text2); padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+.plan-items-btn.active { background: var(--bg2); }
 .plan-over { color: var(--red); }
 .plan-date { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
 .plan-day { width: auto; max-width: 160px; display: inline-block; margin-left: 6px; }
@@ -1570,6 +1576,38 @@ let planAdded   = new Set();   // referral ids put in the van, not yet booked
 let planMatrix  = null;        // { key, ids, m: miles[from][to], approx }, index 0 = HQ
 let planDrivers = { am: [], pm: [] };
 let planMap = null, planLayer = null;
+let planOpen    = new Set();   // referral ids whose wishlist is expanded
+
+function togglePlanItems(id) {
+  if (planOpen.has(id)) planOpen.delete(id); else planOpen.add(id);
+  renderPlanner();
+}
+
+// To the referral's own card. The Planner button comes back to the same van.
+function openFromPlanner(id) {
+  setView('referrals');
+  selectReferral(allReferrals.find(x => x.id === id));
+}
+
+// The wishlist, as the load sees it: Unit A with each line's points, biggest
+// first, then everything else.
+function planItemsHtml(r) {
+  const items = (r.wishlist_items || []).filter(it => !it.free_text && it.category);
+  const qty = it => Number(it.quantity) || 1;
+  const pts = it => LOAD_POINTS[loadKey(it.description)];
+  const line = it => `${qty(it) > 1 ? qty(it) + ' x ' : ''}${esc(it.description)}`;
+  const big = items.filter(it => pts(it) != null).sort((a, b) => qty(b) * pts(b) - qty(a) * pts(a));
+  const small = items.filter(it => pts(it) == null);
+  return `<div class="plan-items" onclick="event.stopPropagation()">
+    ${big.length ? `<div class="plan-items-head">Unit A</div>
+      <div class="plan-items-big">${big.map(it => `<span>${line(it)} <span class="plan-muted">${qty(it) * pts(it)}</span></span>`).join('')}</div>` : ''}
+    ${small.length ? `<div class="plan-items-head">Other items: ${small.reduce((t, it) => t + qty(it), 0)}, ${(small.reduce((t, it) => t + qty(it), 0) * LOAD_OTHER).toFixed(1).replace(/\.0$/, '')} pts</div>
+      <div class="plan-muted">${small.map(line).join(', ')}</div>` : ''}
+    ${items.length ? '' : '<div class="plan-muted">No items on the wishlist.</div>'}
+  </div>`;
+}
+const planRefLink = r => `<button class="dup-link" onclick="event.stopPropagation(); openFromPlanner(${r.id})" title="Open the referral">#${r.referral_number}</button>`;
+const planItemsBtn = r => `<button class="plan-items-btn${planOpen.has(r.id) ? ' active' : ''}" onclick="event.stopPropagation(); togglePlanItems(${r.id})">${ICONS.list}<span>Items</span></button>`;
 
 function loadKey(s) {          // order.mjs normName: what the Unit A list matches on
   return String(s ?? '').replace(/['’‘"]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -1739,10 +1777,11 @@ function renderPlanner() {
       </div>
       ${van.length ? `
         <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
-          <li><b>#${r.referral_number}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span>
+          <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} · ${Math.round(loadScore(r.wishlist_items))} pts</span> ${planItemsBtn(r)}
             ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
             ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
-            <button class="plan-x" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number}">×</button></li>`; }).join('')}
+            <button class="plan-x" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number}">×</button>
+            ${planOpen.has(r.id) ? planItemsHtml(r) : ''}</li>`; }).join('')}
         </ol>
         <div class="plan-muted">Round trip ${route.miles.toFixed(1)} mi${approx}${van.length > 1 ? `, against ${separateMiles(vanStops, m).toFixed(1)} mi as separate trips` : ''}</div>
         ${unbooked ? `<button class="btn-save-edit plan-book" onclick="bookPlan()">${ICONS.check}<span>Book ${unbooked} for ${fmtDay(planDay)}</span></button>` : ''}`
@@ -1763,7 +1802,7 @@ function renderPlanner() {
     ${rows.map(({ r, extra, pts, fits }) => `
       <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})">
         <div class="plan-row-main">
-          <b>#${r.referral_number}</b> ${esc(name(r))}
+          <b>${planRefLink(r)}</b> ${esc(name(r))}
           <span class="plan-muted">${esc(town(r))}</span>
           ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
           ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
@@ -1771,9 +1810,11 @@ function renderPlanner() {
         <div class="plan-row-nums">
           <span>${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
           <span class="${fits ? '' : 'plan-over'}">${Math.round(pts)} pts${fits ? '' : ' · too big'}</span>
+          ${planItemsBtn(r)}
           <input type="date" class="plan-date" value="${r.scheduled_date || ''}" title="Booked date: change or clear"
             onclick="event.stopPropagation()" onchange="setPlanDate(${r.id}, this.value)">
         </div>
+        ${planOpen.has(r.id) ? planItemsHtml(r) : ''}
       </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery is in this van.</div>'}`;
 
   renderPlanMap(cands, van, route);
