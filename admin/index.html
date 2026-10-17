@@ -846,7 +846,7 @@ a { color: inherit; text-decoration: none; }
 .avail-total-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; }
 .avail-week { font-size: 13px; color: var(--text2); white-space: nowrap; }
 .avail-header { flex-wrap: wrap; }
-.plan-grid { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px; align-items: start; max-width: 1200px; }
+.plan-grid { display: grid; grid-template-columns: 1fr minmax(300px, 420px); gap: 16px; align-items: start; max-width: 1200px; }
 .plan-side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
 .plan-map { height: 380px; border: 1px solid var(--border); border-radius: var(--radius); }
 .plan-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -884,7 +884,7 @@ a { color: inherit; text-decoration: none; }
 .plan-day { width: auto; max-width: 160px; display: inline-block; margin-left: 6px; }
 @media (max-width: 800px) {
   .plan-grid { grid-template-columns: 1fr; }
-  .plan-side { position: static; }
+  .plan-side { position: static; order: -1; }   /* the van stays above the list on a phone */
   .plan-map { height: 280px; }
   .plan-row-top { flex-wrap: wrap; }
   .plan-row-who { flex-basis: 100%; }
@@ -1720,8 +1720,8 @@ async function openPlanner() {
         <label class="avail-week">Day <input type="date" class="vol-input plan-day" id="plan-day" onchange="setPlanDay(this.value)"></label>
       </div>
       <div class="plan-grid">
-        <div class="plan-side"><div id="plan-van"></div><div id="plan-map" class="plan-map"></div></div>
         <div id="plan-list" class="plan-list"><div class="loading">Loading…</div></div>
+        <div class="plan-side"><div id="plan-van"></div><div id="plan-map" class="plan-map"></div></div>
       </div>`;
   }
   document.getElementById('plan-day').value = planDay;
