@@ -867,6 +867,7 @@ a { color: inherit; text-decoration: none; }
 .plan-row { display: flex; flex-direction: column; gap: 5px; padding: 9px 12px; border-bottom: 1px solid var(--bg2); cursor: pointer; font-size: 13px; }
 .plan-row:last-child { border-bottom: none; }
 .plan-row:hover { background: var(--bg); }
+.plan-row.plan-row-hl { background: var(--bg2); box-shadow: inset 3px 0 0 var(--text); }
 .plan-row-top { display: flex; gap: 6px 10px; justify-content: space-between; align-items: center; }
 .plan-row-who { flex: 1; min-width: 0; }
 .plan-row-tags { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1884,7 +1885,7 @@ function renderPlanner() {
       </div>
     </div>
     ${rows.map(({ r, extra, pts, big, fits }) => { const rare = Object.keys(rareItems(r.wishlist_items)).length ? rareItems(r.wishlist_items) : null; return `
-      <div class="plan-row${fits ? '' : ' plan-nofit'}" onclick="togglePlan(${r.id})"
+      <div class="plan-row${fits ? '' : ' plan-nofit'}" id="plan-row-${r.id}" onclick="togglePlan(${r.id})"
         onmouseenter="planHighlight(${r.id}, true)" onmouseleave="planHighlight(${r.id}, false)">
         <div class="plan-row-top">
           <div class="plan-row-who"><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted" style="white-space:nowrap">${esc(town(r))}</span></div>
@@ -1949,9 +1950,21 @@ function renderPlanMap(cands, van, route) {
     const m = L.circleMarker([r.clients.latitude, r.clients.longitude], style)
       .bindTooltip(`#${r.referral_number} ${esc(r.clients.postcode || '')} · ${Math.round(planLoad(r))} pts`)
       .on('click', () => togglePlan(r.id))
+      .on('mouseover', () => planRowHighlight(r.id, true))
+      .on('mouseout', () => planRowHighlight(r.id, false))
       .addTo(planLayer);
     planMarkers[r.id] = { m, style };
   }
+}
+
+// And the other way: hovering a pin picks out its row, scrolling it into view
+// if it is off screen (the map is sticky, so it stays put). A delivery in the
+// van has no row in the list, so its pin highlights nothing.
+function planRowHighlight(id, on) {
+  const row = document.getElementById('plan-row-' + id);
+  if (!row) return;
+  row.classList.toggle('plan-row-hl', on);
+  if (on) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // Hovering a row picks out its pin: bigger, dark ring, on top, label showing.
