@@ -877,6 +877,10 @@ a { color: inherit; text-decoration: none; }
 .plan-col-load { width: 104px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
 .plan-col-actions { width: 236px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .plan-big { color: var(--red); font-weight: 700; }
+.plan-prompt { display: inline-flex; gap: 6px; align-items: center; }
+.plan-prompt button { font-size: 11px; font-weight: 600; color: inherit; text-decoration: underline; padding: 0; }
+.item-pts { font-size: 12px; color: var(--text3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plan-items .item-row { padding: 4px 0; }
 .plan-alt { font-size: 11px; color: var(--text3); white-space: nowrap; }
 .plan-list-head .plan-row-nums { white-space: normal; line-height: 1.3; align-items: flex-end; }
 .plan-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
@@ -1229,6 +1233,7 @@ async function loadReferrals() {
 
   if (error) { console.error(error); return; }
   allReferrals = data || [];
+  if (currentView === 'planner') renderPlanner();   // a correction made from the planner
   if (selectedRef) {
     const updated = allReferrals.find(x => x.id === selectedRef.id);
     if (updated) { selectedRef = updated; renderDetail(selectedRef); }
@@ -1610,25 +1615,10 @@ function openFromPlanner(id) {
   selectReferral(allReferrals.find(x => x.id === id));
 }
 
-// The wishlist, as the load sees it: Unit A with each line's points, biggest
-// first, then everything else.
+// The wishlist, editable: the same editor as the referral card, showing each
+// line's points. Clicks inside must not reach the row, which toggles the van.
 function planItemsHtml(r) {
-  const items = (r.wishlist_items || []).filter(it => !it.free_text && it.category);
-  const qty = it => Number(it.quantity) || 1;
-  const pts = it => LOAD_POINTS[loadKey(it.description)];
-  const line = it => `${qty(it) > 1 ? qty(it) + ' x ' : ''}${esc(it.description)}`;
-  const counted = it => RARELY_STOCKED.includes(loadKey(it.description)) ? 0 : givenQty(it) * pts(it);
-  const big = items.filter(it => pts(it) != null).sort((a, b) => counted(b) - counted(a));
-  const note = it => RARELY_STOCKED.includes(loadKey(it.description)) ? ', rarely in stock, not counted'
-    : givenQty(it) < qty(it) ? `, ${givenQty(it)} given at most` : '';
-  const small = items.filter(it => pts(it) == null);
-  return `<div class="plan-items" onclick="event.stopPropagation()">
-    ${big.length ? `<div class="plan-items-head">Unit A</div>
-      <div class="plan-items-big">${big.map(it => `<span>${line(it)} <span class="plan-muted">${counted(it)}${note(it)}</span></span>`).join('')}</div>` : ''}
-    ${small.length ? `<div class="plan-items-head">Other items: ${small.reduce((t, it) => t + qty(it), 0)}, ${(small.reduce((t, it) => t + qty(it), 0) * LOAD_OTHER).toFixed(1).replace(/\.0$/, '')} pts</div>
-      <div class="plan-muted">${small.map(line).join(', ')}</div>` : ''}
-    ${items.length ? '' : '<div class="plan-muted">No items on the wishlist.</div>'}
-  </div>`;
+  return `<div class="plan-items" onclick="event.stopPropagation()">${wishlistEditorHtml(r, { editing: true, points: true })}</div>`;
 }
 // An empty <input type="date"> in Safari shows TODAY in grey, which read as
 // "booked for today" on every row. So an unbooked row gets a button, and the
@@ -1653,35 +1643,41 @@ const planItemsBtn = r => `<button class="plan-items-btn${planOpen.has(r.id) ? '
 function loadKey(s) {          // order.mjs normName: what the Unit A list matches on
   return String(s ?? '').replace(/['’‘"]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
-// Items that carry points but are almost never on the shelf, so the planner
-// also gives each load without them (Richard, 17 Oct 2026: sideboards).
-const RARELY_STOCKED = ['sideboard'];
-
-// Most of an item ever given, whatever the wishlist asks for. Chests of
-// drawers are so short that nobody gets more than one (Richard, 17 Oct 2026).
-const MAX_GIVEN = { 'chest of drawers': 1 };
-const givenQty = it => Math.min(Number(it.quantity) || 1, MAX_GIVEN[loadKey(it.description)] ?? Infinity);
-
-function loadScore(items, withoutRare = false) {
+// The load is the wishlist exactly as it stands. Admins trim it in the Items
+// editor for stock and need, and the same list prints for the gatherers
+// (Richard, 18 Oct 2026). Nothing is adjusted behind the scenes; the stock
+// rules below only PROMPT, each with a one-tap fix.
+function loadScore(items) {
   return (items || []).filter(it => !it.free_text && it.category)
-    .filter(it => !(withoutRare && RARELY_STOCKED.includes(loadKey(it.description))))
-    .reduce((t, it) => t + givenQty(it) * (LOAD_POINTS[loadKey(it.description)] ?? LOAD_OTHER), 0);
+    .reduce((t, it) => t + (Number(it.quantity) || 1) * (LOAD_POINTS[loadKey(it.description)] ?? LOAD_OTHER), 0);
 }
-// The figure the planner plans with: without rarely-stocked items, so fit,
-// Big order and the van total all assume no sideboard goes (Richard, 17 Oct 2026).
-const planLoad = r => loadScore(r.wishlist_items, true);
-const isBigOrder = r => planLoad(r) > VAN_CAPACITY;
-const bigTitle = 'Big order: over a van as requested. What goes depends on what was gathered';
-// How many of each rarely-stocked item a wishlist asks for: { sideboard: 2 }.
-function rareItems(items) {
-  const out = {};
-  for (const it of items || []) {
-    const k = loadKey(it.description);
-    if (!it.free_text && it.category && RARELY_STOCKED.includes(k)) out[k] = (out[k] || 0) + (Number(it.quantity) || 1);
+const planLoad = r => loadScore(r.wishlist_items);
+
+// Almost never on the shelf (Richard, 17 Oct 2026).
+const RARELY_STOCKED = ['sideboard'];
+// The most anyone is given: chests of drawers are so short that nobody gets
+// more than one (Richard, 17 Oct 2026).
+const MAX_GIVEN = { 'chest of drawers': 1 };
+
+// What a wishlist asks for that will not go as asked: [{ text, fix, fixLabel }].
+// fix is the correction that settles it, made only when the admin taps it.
+function loadPrompts(r) {
+  const out = [];
+  for (const it of (r.wishlist_items || []).filter(i => !i.free_text && i.category)) {
+    const k = loadKey(it.description), q = Number(it.quantity) || 1;
+    if (RARELY_STOCKED.includes(k))
+      out.push({ text: `${q > 1 ? q + ' x ' : ''}${it.description}: rarely in stock`, fixLabel: 'Remove',
+                 fix: `wlRemoveItem(${r.id}, ${it.id})` });
+    else if (MAX_GIVEN[k] != null && q > MAX_GIVEN[k])
+      out.push({ text: `${q} x ${it.description}: only ${MAX_GIVEN[k]} given`, fixLabel: `Set to ${MAX_GIVEN[k]}`,
+                 fix: `wlSetQuantity(${r.id}, ${it.id}, ${MAX_GIVEN[k]})` });
   }
   return out;
 }
-
+const planPromptTags = r => loadPrompts(r).map(p => `<span class="tag tag-wishlist plan-prompt">${esc(p.text)}
+  <button onclick="event.stopPropagation(); ${p.fix}">${p.fixLabel}</button></span>`).join('');
+const isBigOrder = r => planLoad(r) > VAN_CAPACITY;
+const bigTitle = 'Big order: over a van as the list stands. Trim it in Items for what is in stock';
 // Open deliveries with a wishlist in, gathered or not, that have a map location.
 function planCandidates() {
   return allReferrals.filter(r => r.fulfilment_type === 'delivery' && r.wishlist_submitted_at
@@ -1826,7 +1822,6 @@ function renderPlanner() {
   const vanStops = van.map(r => planIdx(r.id));
   const route = bestRoute(vanStops, m);
   const load = van.reduce((t, r) => t + planLoad(r), 0);
-  const loadFull = van.reduce((t, r) => t + loadScore(r.wishlist_items), 0);
   const approx = planMatrix.approx ? ' (approx.)' : '';
   const name = r => [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
   const town = r => [postTown(r.clients), (r.clients?.postcode || '').toUpperCase()].filter(Boolean).join(', ');
@@ -1839,13 +1834,14 @@ function renderPlanner() {
       <div class="plan-drivers">Drivers free: AM ${esc(planDrivers.am.join(', ') || 'none recorded')} · PM ${esc(planDrivers.pm.join(', ') || 'none recorded')}</div>
       <div class="plan-load ${load > VAN_CAPACITY ? 'over' : ''}">
         <div class="plan-load-bar"><span style="width:${pct}%"></span></div>
-        <div>${Math.round(load)} of ${VAN_CAPACITY} points${loadFull > load ? ` (${Math.round(loadFull)} with ${RARELY_STOCKED.join(' or ')}s)` : ''}${load > VAN_CAPACITY
+        <div>${Math.round(load)} of ${VAN_CAPACITY} points${load > VAN_CAPACITY
           ? (van.some(isBigOrder) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}</div>
       </div>
       ${van.length ? `
         <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
           <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} ·</span> <span class="${isBigOrder(r) ? 'plan-big' : 'plan-muted'}"${isBigOrder(r) ? ` title="${bigTitle}"` : ''}>${Math.round(planLoad(r))} pts</span>
             <div class="plan-stop-actions">
+            ${planPromptTags(r)}
             ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
             ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
             ${planItemsBtn(r)}
@@ -1884,25 +1880,24 @@ function renderPlanner() {
         <span class="plan-col-actions"></span>
       </div>
     </div>
-    ${rows.map(({ r, extra, pts, big, fits }) => { const rare = Object.keys(rareItems(r.wishlist_items)).length ? rareItems(r.wishlist_items) : null; return `
+    ${rows.map(({ r, extra, pts, big, fits }) => `
       <div class="plan-row${fits ? '' : ' plan-nofit'}" id="plan-row-${r.id}" onclick="togglePlan(${r.id})"
         onmouseenter="planHighlight(${r.id}, true)" onmouseleave="planHighlight(${r.id}, false)">
         <div class="plan-row-top">
           <div class="plan-row-who"><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted" style="white-space:nowrap">${esc(town(r))}</span></div>
           <div class="plan-row-nums">
             <span class="plan-col-miles">${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span>${rare
-              ? `<span class="plan-alt">${Math.round(loadScore(r.wishlist_items))} with ${Object.keys(rare).join(', ')}</span>` : ''}</span>
+            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span></span>
             <span class="plan-col-actions">${planItemsBtn(r)}${planDateCell(r)}</span>
           </div>
         </div>
         <div class="plan-row-tags">
           ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
-          ${rare ? Object.entries(rare).map(([k, n]) => `<span class="tag tag-rejected" title="Rarely in stock">${titleCase(k)}${n > 1 ? ' x' + n : ''}</span>`).join('') : ''}
+          ${planPromptTags(r)}
           ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
         </div>
         ${planOpen.has(r.id) ? planItemsHtml(r) : ''}
-      </div>`; }).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery is in this van.</div>'}`;
+      </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery is in this van.</div>'}`;
 
   renderPlanMap(cands, van, route);
 }
@@ -2773,48 +2768,7 @@ function renderDetail(r) {
             <div class="wl-note-hint">Prints on the PDF under "Admin notes". The Admin notes card below does not.</div>
             <button id="wl-note-save-btn" class="notes-save" onclick="saveWlNote(${r.id})">Save note</button>
           </div>` : ''}
-        ${showWishlist ? items.map(it => `
-          <div class="item-row">
-            ${editingWishlist ? `
-              <input class="item-qty-input" type="number" min="1" max="99" value="${it.quantity}"
-                     id="wq-${it.id}"
-                     onchange="wlSetQuantity(${r.id}, ${it.id}, ${JSON.stringify(esc(it.description))}, ${it.quantity})">`
-              : `<span class="item-qty">${it.quantity > 1 ? '×' + it.quantity : ''}</span>`}
-            <span class="item-name">${esc(it.description)}${it.source === 'admin' ? '<span class="item-flag">added</span>' : ''}</span>
-            <span class="item-cat ic-${it.category || 'other'}">${it.category || 'free text'}</span>
-            ${editingWishlist ? `
-              <button class="item-drop" title="Take this off the list"
-                      onclick="wlRemoveItem(${r.id}, ${it.id})">${ICONS.trash}</button>` : ''}
-          </div>`).join('') : ''}
-
-        ${showWishlist && editingWishlist ? `
-          <div class="item-add">
-            <input id="wl-add-desc" class="item-add-desc" list="wl-item-list"
-                   placeholder="Item to add…" maxlength="80" autocomplete="off"
-                   oninput="wlAddDescChanged()">
-            <datalist id="wl-item-list">
-              ${formItems.map(i => `<option value="${esc(i.item)}"></option>`).join('')}
-            </datalist>
-            <input id="wl-add-qty" class="item-add-qty" type="number" min="1" max="99" value="1">
-            <select id="wl-add-cat" class="item-add-cat">
-              <option value="general">General</option>
-              <option value="electrical">Electrical</option>
-              <option value="furniture">Furniture</option>
-            </select>
-            <button class="btn" onclick="wlAddItem(${r.id})">Add</button>
-            <span class="item-add-hint" id="wl-add-hint"></span>
-          </div>` : ''}
-
-        ${showWishlist && removals.length ? `
-          <div class="item-removed-block">
-            <div class="item-removed-title">Taken off the list</div>
-            ${removals.map(c => `
-              <div class="item-removed">
-                <span>${esc(c.description)}</span>
-                <span class="item-removed-by">${fmtDate(c.created_at)}${c.created_by ? ' · ' + esc(c.created_by) : ''}</span>
-                <button class="item-undo" onclick="wlUndo(${r.id}, ${c.id})">Put back</button>
-              </div>`).join('')}
-          </div>` : ''}
+        ${showWishlist ? wishlistEditorHtml(r, { editing: editingWishlist }) : ''}
       </div>` : `
       <div class="card">
         <div class="card-title">Wishlist items</div>
@@ -3403,6 +3357,69 @@ async function unmarkDuplicate(id) {
   await patchReferral(id, { duplicate_of: null, cancelled_at: null });
 }
 
+// ── Wishlist editor ─────────────────────────────────────────
+// One editor, two homes: the referral card's wishlist and the planner's Items
+// panel (Richard, 18 Oct 2026). Every change is a correction through
+// wlCorrect, so both pages, the planner's load, the PDF and the Telegram post
+// all read the same list. It needs nothing but the referral, which is what
+// lets it sit in either page.
+//   editing: quantity boxes, remove buttons and the add row
+//   points:  each line's load points, biggest first (the planner), in place of
+//            its category
+function wishlistEditorHtml(r, { editing = false, points = false } = {}) {
+  const pts = it => (Number(it.quantity) || 1) * (LOAD_POINTS[loadKey(it.description)] ?? LOAD_OTHER);
+  const fmtPts = n => (Math.round(n * 10) / 10) + ' pts';
+  const items = (r.wishlist_items || []).filter(it => it.category)
+    .sort(points ? (a, b) => pts(b) - pts(a) || a.description.localeCompare(b.description)
+                 : (a, b) => a.category.localeCompare(b.category) || a.description.localeCompare(b.description));
+  const removals = activeRemovals(r);
+  const id = r.id;
+  return `
+    ${items.map(it => `
+      <div class="item-row">
+        ${editing ? `
+          <input class="item-qty-input" type="number" min="1" max="99" value="${it.quantity}"
+                 id="wq-${it.id}"
+                 onchange="wlSetQuantity(${id}, ${it.id})">`
+          : `<span class="item-qty">${it.quantity > 1 ? '×' + it.quantity : ''}</span>`}
+        <span class="item-name">${esc(it.description)}${it.source === 'admin' ? '<span class="item-flag">added</span>' : ''}</span>
+        ${points ? `<span class="item-pts">${fmtPts(pts(it))}</span>`
+                 : `<span class="item-cat ic-${it.category || 'other'}">${it.category || 'free text'}</span>`}
+        ${editing ? `
+          <button class="item-drop" title="Take this off the list"
+                  onclick="wlRemoveItem(${id}, ${it.id})">${ICONS.trash}</button>` : ''}
+      </div>`).join('') || '<div class="item-row" style="color:var(--text3)">Nothing left on the list.</div>'}
+
+    ${editing ? `
+      <div class="item-add">
+        <input id="wl-add-desc-${id}" class="item-add-desc" list="wl-item-list-${id}"
+               placeholder="Item to add…" maxlength="80" autocomplete="off"
+               oninput="wlAddDescChanged(${id})">
+        <datalist id="wl-item-list-${id}">
+          ${formItems.map(i => `<option value="${esc(i.item)}"></option>`).join('')}
+        </datalist>
+        <input id="wl-add-qty-${id}" class="item-add-qty" type="number" min="1" max="99" value="1">
+        <select id="wl-add-cat-${id}" class="item-add-cat">
+          <option value="general">General</option>
+          <option value="electrical">Electrical</option>
+          <option value="furniture">Furniture</option>
+        </select>
+        <button class="btn" onclick="wlAddItem(${id})">Add</button>
+        <span class="item-add-hint" id="wl-add-hint-${id}"></span>
+      </div>` : ''}
+
+    ${removals.length ? `
+      <div class="item-removed-block">
+        <div class="item-removed-title">Taken off the list</div>
+        ${removals.map(c => `
+          <div class="item-removed">
+            <span>${esc(c.description)}</span>
+            <span class="item-removed-by">${fmtDate(c.created_at)}${c.created_by ? ' · ' + esc(c.created_by) : ''}</span>
+            <button class="item-undo" onclick="wlUndo(${id}, ${c.id})">Put back</button>
+          </div>`).join('')}
+      </div>` : ''}`;
+}
+
 // ── Wishlist corrections ────────────────────────────────────
 // wishlist_items is DERIVED: ingest_wishlist_submission rebuilds it on every
 // submission, rebuild_wishlist_items rebuilds every referral after a vocabulary
@@ -3426,10 +3443,10 @@ async function wlCorrect(referralId, fields) {
 // Picking a form item settles its category, so the dropdown follows the choice
 // rather than asking again — and the hint says which heading it will print
 // under, because that is the whole reason for picking from the list.
-function wlAddDescChanged() {
-  const desc = document.getElementById('wl-add-desc')?.value || '';
-  const hint = document.getElementById('wl-add-hint');
-  const cat  = document.getElementById('wl-add-cat');
+function wlAddDescChanged(referralId) {
+  const desc = document.getElementById('wl-add-desc-' + referralId)?.value || '';
+  const hint = document.getElementById('wl-add-hint-' + referralId);
+  const cat  = document.getElementById('wl-add-cat-' + referralId);
   const it   = formItemFor(desc);
   if (it && cat) cat.value = it.category;
   if (!hint) return;
@@ -3439,13 +3456,13 @@ function wlAddDescChanged() {
 }
 
 async function wlAddItem(referralId) {
-  const desc = (document.getElementById('wl-add-desc')?.value || '').trim();
-  if (!desc) { document.getElementById('wl-add-desc')?.focus(); return; }
-  const qty = parseInt(document.getElementById('wl-add-qty')?.value, 10) || 1;
+  const desc = (document.getElementById('wl-add-desc-' + referralId)?.value || '').trim();
+  if (!desc) { document.getElementById('wl-add-desc-' + referralId)?.focus(); return; }
+  const qty = parseInt(document.getElementById('wl-add-qty-' + referralId)?.value, 10) || 1;
   // A picked item carries its own category; the dropdown only decides for
   // something typed that is not on the form.
   const cat = formItemFor(desc)?.category
-           || document.getElementById('wl-add-cat')?.value || 'general';
+           || document.getElementById('wl-add-cat-' + referralId)?.value || 'general';
   await wlCorrect(referralId, { action: 'add', description: desc, quantity: qty, category: cat });
 }
 
@@ -3459,12 +3476,21 @@ async function wlRemoveItem(referralId, itemId) {
                                 category: it.category, quantity: it.quantity });
 }
 
-async function wlSetQuantity(referralId, itemId, description, previous) {
+// The item is looked up by id, never passed in the markup. Until 18 Oct 2026
+// the description went in as JSON.stringify(...) inside a double-quoted
+// onchange="...", so its own quotes closed the attribute and every quantity
+// edit died silently: no correction after the day the feature was built.
+// qty: set it directly (the planner's "Set to 1"); otherwise read the box.
+async function wlSetQuantity(referralId, itemId, qty) {
+  const r  = allReferrals.find(x => x.id === referralId);
+  const it = (r?.wishlist_items || []).find(i => i.id === itemId);
+  if (!it) return;
+  const previous = it.quantity;
   const input = document.getElementById('wq-' + itemId);
-  const qty = parseInt(input?.value, 10);
+  if (qty == null) qty = parseInt(input?.value, 10);
   if (!qty || qty < 1 || qty > 99) { if (input) input.value = previous; return; }
   if (qty === previous) return;
-  await wlCorrect(referralId, { action: 'quantity', description,
+  await wlCorrect(referralId, { action: 'quantity', description: it.description,
                                 quantity: qty, previous_quantity: previous });
 }
 
