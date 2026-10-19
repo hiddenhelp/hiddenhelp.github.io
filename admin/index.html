@@ -2456,7 +2456,8 @@ function renderDetail(r) {
       <span class="ms-date">${done ? fmtDateTime(m.ts) : '—'}</span>
     </div>`;
   }).join('')
-  + (r.email_drafted_at ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Email drafted</span><span class="ms-date">${fmtDateTime(r.email_drafted_at)}</span></div>` : '')
+  + (r.email_sent_at ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Emailed</span><span class="ms-date">${fmtDateTime(r.email_sent_at)}</span></div>`
+     : r.email_drafted_at ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Email drafted</span><span class="ms-date">${fmtDateTime(r.email_drafted_at)}</span></div>` : '')
   + (r.gathered_by_id ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Gathered by</span><span class="ms-date">${esc(r.gathered_vol?.name || '—')}</span></div>` : '')
   + (r.delivered_by_id ? `<div class="ms-row"><div class="ms-dot ms-dot-done"></div><span class="ms-label">Delivered by</span><span class="ms-date">${esc(r.delivered_vol?.name || '—')}</span></div>` : '');
 
@@ -2615,7 +2616,7 @@ function renderDetail(r) {
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn" id="wishlist-link-btn" onclick="copyWishlistUrl(${r.referral_number})">${ICONS.copy}<span>Copy wishlist link</span></button>` : ''}
+        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn" id="wishlist-link-btn" onclick="draftWishlistRequest()" title="Draft an email to the referrer with the client's wishlist link">${ICONS.mail}<span>Send wishlist email</span></button>` : ''}
         <!-- Ruled 15 Sep 2026: an unnumbered referral is never postable, and the
              button should not appear at all rather than appear and refuse. The
              gate covers Email and PDF too, not just Telegram — all three resolve
@@ -2624,7 +2625,7 @@ function renderDetail(r) {
              the email puts the number in its subject line. -->
         ${r.wishlist_submitted_at && r.referral_number != null ? `
           <button class="btn${r.telegram_posted_at ? ' btn-done' : ''}" id="wl-tg-btn" onclick="postWishlistTelegram()" title="${r.telegram_posted_at ? 'Posted ' + fmtDateTime(r.telegram_posted_at) + ' — click to post again' : 'Post to Telegram'}">${r.telegram_posted_at ? ICONS.check + `<span>Posted ${fmtDate(r.telegram_posted_at)}</span>` : ICONS.send + '<span>Telegram</span>'}</button>
-          <button class="btn${r.email_drafted_at ? ' btn-done' : ''}" id="wl-email-btn" onclick="draftWishlistEmail()" title="${r.email_drafted_at ? 'Draft prepared ' + fmtDateTime(r.email_drafted_at) + ' — click to draft again' : 'Download PDF and open Gmail draft'}">${r.email_drafted_at ? ICONS.check + `<span>Drafted ${fmtDate(r.email_drafted_at)}</span>` : ICONS.mail + '<span>Email</span>'}</button>
+          <button class="btn${r.email_sent_at || r.email_drafted_at ? ' btn-done' : ''}" id="wl-email-btn" onclick="emailReferralPdf()" title="${r.email_sent_at ? 'Emailed ' + fmtDateTime(r.email_sent_at) + ' — click to send again' : r.email_drafted_at ? 'Draft prepared ' + fmtDateTime(r.email_drafted_at) + ' — click to send' : 'Email the PDF to ' + REFERRAL_EMAIL_RECIPIENT}">${r.email_sent_at ? ICONS.check + `<span>Emailed ${fmtDate(r.email_sent_at)}</span>` : r.email_drafted_at ? ICONS.check + `<span>Drafted ${fmtDate(r.email_drafted_at)}</span>` : ICONS.mail + '<span>Email</span>'}</button>
           <button class="btn" id="wl-pdf-btn" onclick="openWishlistPdf()">${ICONS.printer}<span>PDF</span></button>` : ''}
         <button class="btn" onclick="refreshSelected()">${ICONS.refresh}<span>Refresh</span></button>
       </div>
@@ -3550,16 +3551,59 @@ function flashButton(btn, text, color, originalText) {
   }, 2000);
 }
 
-// ── Wishlist link ────────────────────────────────────────────
-function copyWishlistUrl(referralNumber) {
-  const url = WISHLIST_FORM_URL + referralNumber;
-  navigator.clipboard.writeText(url).then(() => {
-    const btn = document.getElementById('wishlist-link-btn');
-    if (btn) {
-      btn.innerHTML = ICONS.check + '<span>Copied!</span>';
-      setTimeout(() => { btn.innerHTML = ICONS.copy + '<span>Copy wishlist link</span>'; }, 2000);
+// ── Wishlist request email ──────────────────────────────────
+// Replaced "Copy wishlist link" (Richard, 19 Oct 2026): drafts an email in
+// admin's mailbox to the referrer, with the client's pre-numbered wishlist
+// link. A DRAFT, never a send: it goes outside hiddenhelp.org, so admin reads
+// it first. The body's opening is placeholder text until admin supplies the
+// wording.
+const WISHLIST_REQUEST_INTRO =
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor ' +
+  'incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud ' +
+  'exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
+
+function wishlistRequestEmail(r) {
+  const name = [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
+  return {
+    to: r.referrers?.email || '',
+    subject: `Hidden Help Wishlist for Completion - Client: ${name}, Ref: ${r.referral_number}`,
+    body: `${WISHLIST_REQUEST_INTRO}\n\n${WISHLIST_FORM_URL}${r.referral_number}`,
+  };
+}
+
+// Through the web app (draftWishlistRequest) so the draft is admin's whoever
+// is signed in. Until admin publishes the version that has it, the deployment
+// answers "unknown action" and this opens the same email in a Gmail compose
+// tab instead, which needs no attachment and so loses nothing.
+async function draftWishlistRequest() {
+  const r = selectedRef; if (!r) return;
+  const btn = document.getElementById('wishlist-link-btn');
+  const mail = wishlistRequestEmail(r);
+  if (!mail.to) { alert('This referrer has no email address on record.'); return; }
+  const compose = () => window.open('https://mail.google.com/mail/?view=cm&fs=1'
+    + `&to=${encodeURIComponent(mail.to)}&su=${encodeURIComponent(mail.subject)}`
+    + `&body=${encodeURIComponent(mail.body)}`, '_blank');
+  if (btn) btn.disabled = true;
+  try {
+    if (typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL) {
+      const { data: { session } } = await db.auth.getSession();
+      const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ token: session.access_token, action: 'draftWishlistRequest', ...mail }),
+      });
+      const out = await res.json();
+      if (out.error && /^unknown action/.test(out.error)) compose();
+      else if (out.error) throw new Error(out.error);
+      else window.open('https://mail.google.com/mail/#drafts', '_blank');
+    } else {
+      compose();
     }
-  });
+    flashIconBtn(btn, ICONS.check, 'Drafted', ICONS.mail, 'Send wishlist email');
+  } catch (e) {
+    flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.mail, 'Send wishlist email');
+    alert('Wishlist email failed: ' + e.message);
+  }
+  if (btn) btn.disabled = false;
 }
 
 // ── Wishlist actions (moved from wishlist.html) ──────────────
@@ -3680,57 +3724,66 @@ async function postWishlistTelegram() {
   }
 }
 
-async function draftWishlistEmail() {
+// Sends the PDF to REFERRAL_EMAIL_RECIPIENT from admin's mailbox, after a
+// confirmation: a sent email cannot be recalled (Richard, 19 Oct 2026; the
+// draft step had stopped earning its keep). Until admin publishes the web app
+// version that has sendEmail, the deployment answers "unknown action", and
+// this makes the draft as before and says so, so nothing is lost in between.
+async function emailReferralPdf() {
   const r = selectedRef; if (!r) return;
   const btn = document.getElementById('wl-email-btn');
+  const subject = `*** REFERRAL ${r.referral_number} ***`;
+  const hasWebApp = typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL;
+  if (hasWebApp && !confirm(`Send the PDF for #${r.referral_number} to ${REFERRAL_EMAIL_RECIPIENT}?`)) return;
   btn.disabled = true;
   try {
-    const subject = `*** REFERRAL ${r.referral_number} ***`;
-
-    if (typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL) {
-      // Apps Script web app saves a Gmail draft with the PDF attached
-      // (DraftEmail.gs) — compose URLs can't carry attachments.
+    let stamp = 'email_drafted_at';
+    if (hasWebApp) {
       const { data: { session } } = await db.auth.getSession();
-      const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, {
+      const post = action => fetch(DRAFT_EMAIL_WEBAPP_URL, {
         method: 'POST',
         body: JSON.stringify({
-          token: session.access_token,
+          token: session.access_token, action,
           referral_number: r.referral_number,
           to: REFERRAL_EMAIL_RECIPIENT,
           subject,
           body: buildEmailText(r),
         }),
-      });
-      const out = await res.json();
-      if (out.error) throw new Error(out.error);
-      window.open('https://mail.google.com/mail/#drafts', '_blank');
+      }).then(res => res.json());
+      let out = await post('sendEmail');
+      if (out.error && /^unknown action/.test(out.error)) {
+        out = await post('draftEmail');
+        if (out.error) throw new Error(out.error);
+        alert('Saved as a Gmail draft, NOT sent: sending is not switched on yet. '
+            + 'It starts working when admin publishes the new version of the web app.');
+        window.open('https://mail.google.com/mail/#drafts', '_blank');
+      } else if (out.error) {
+        throw new Error(out.error);
+      } else {
+        stamp = 'email_sent_at';
+      }
     } else {
-      // Fallback until the web app is deployed: download the PDF for manual
-      // attach and open a pre-filled Gmail compose tab.
+      // No web app configured: download the PDF for manual attach and open a
+      // pre-filled Gmail compose tab.
       const blob     = await fetchPdfBlob(r);
       const blobUrl  = URL.createObjectURL(blob);
-      const filename = `Referral ${r.referral_number}.pdf`;
-
       const a = document.createElement('a');
-      a.href = blobUrl; a.download = filename; a.click();
+      a.href = blobUrl; a.download = `Referral ${r.referral_number}.pdf`; a.click();
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-
-      const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1'
+      window.open('https://mail.google.com/mail/?view=cm&fs=1'
         + `&to=${encodeURIComponent(REFERRAL_EMAIL_RECIPIENT)}`
         + `&su=${encodeURIComponent(subject)}`
-        + `&body=${encodeURIComponent(buildEmailText(r))}`;
-      window.open(gmailUrl, '_blank');
+        + `&body=${encodeURIComponent(buildEmailText(r))}`, '_blank');
     }
 
-    // "drafted", not "sent" — we can't see whether the Gmail draft goes out
     const ts = new Date().toISOString();
-    const { error } = await db.from('referrals').update({ email_drafted_at: ts }).eq('id', r.id);
-    if (error) console.error('email_drafted_at stamp failed:', error);
-    else r.email_drafted_at = ts;
+    const { error } = await db.from('referrals').update({ [stamp]: ts }).eq('id', r.id);
+    if (error) console.error(stamp + ' stamp failed:', error);
+    else r[stamp] = ts;
     renderDetail(r);
   } catch (e) {
     flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.mail, 'Email');
-    alert('Email draft failed: ' + e.message);
+    alert('Email failed: ' + e.message);
     btn.disabled = false;
   }
 }
