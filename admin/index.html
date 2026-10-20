@@ -3683,7 +3683,9 @@ function buildEmailText(r) {
   const phone = isReferrerPhone(c.phone, ref.phone) ? 'contact referrer' : fmtPhone(c.phone);
   const address = isDelivery
     ? (c.geocoded_address || c.address || '')
-    : (r.notes ? `Needed asap. Please contact to arrange: ${r.notes}` : 'Needed asap. Please contact to arrange.');
+    // The collection notes, as the Telegram post and the PDF have it. This read
+    // r.notes, the back-office Admin notes card, until 20 Oct 2026.
+    : (r.collection_instructions ? `Needed asap. Please contact to arrange: ${r.collection_instructions}` : 'Needed asap. Please contact to arrange.');
   const refPhone = fmtPhone(ref.phone);
   const refDetail = [refPhone, ref.organisation].filter(Boolean).join(', ');
   const household = buildHousehold(r.adults_count, r.adults_by_sex, r.child_ages);
