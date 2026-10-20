@@ -3570,12 +3570,19 @@ const WISHLIST_REQUEST_SIGNOFF =
   'UNIT 3 WHEAL ROSE ESTATE, SCORRIER, REDRUTH, TR16 5FJ\n' +
   'My normal working hours are 9 am - 10.30 am Mon - Fri';
 
+// body is plain text, for the Gmail compose fallback, which cannot carry HTML,
+// so it shows the bare URL (the only way to give a working link in plain text).
+// htmlBody is what the web app's draft uses: the link reads
+// "HH Wishlist Form: Ref 1650" (admin, 20 Oct 2026).
 function wishlistRequestEmail(r) {
   const name = [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
+  const url  = WISHLIST_FORM_URL + r.referral_number;
+  const html = t => esc(t).replace(/\n/g, '<br>');
   return {
     to: r.referrers?.email || '',
     subject: `Hidden Help Wishlist for Completion - Client: ${name}, Ref: ${r.referral_number}`,
-    body: `${WISHLIST_REQUEST_INTRO}\n\n${WISHLIST_FORM_URL}${r.referral_number}\n\n${WISHLIST_REQUEST_SIGNOFF}`,
+    body: `${WISHLIST_REQUEST_INTRO}\n\n${url}\n\n${WISHLIST_REQUEST_SIGNOFF}`,
+    htmlBody: `${html(WISHLIST_REQUEST_INTRO)}<br><br><a href="${esc(url)}">HH Wishlist Form: Ref ${esc(r.referral_number)}</a><br><br>${html(WISHLIST_REQUEST_SIGNOFF)}`,
   };
 }
 
@@ -3590,7 +3597,7 @@ async function draftWishlistRequest() {
   if (!mail.to) { alert('This referrer has no email address on record.'); return; }
   const compose = () => window.open('https://mail.google.com/mail/?view=cm&fs=1'
     + `&to=${encodeURIComponent(mail.to)}&su=${encodeURIComponent(mail.subject)}`
-    + `&body=${encodeURIComponent(mail.body)}`, '_blank');
+    + `&body=${encodeURIComponent(mail.body)}`, '_blank');   // plain text only: no htmlBody here
   if (btn) btn.disabled = true;
   try {
     if (typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL) {
