@@ -3555,12 +3555,12 @@ function flashButton(btn, text, color, originalText) {
 // Replaced "Copy wishlist link" (Richard, 19 Oct 2026): drafts an email in
 // admin's mailbox to the referrer, with the client's pre-numbered wishlist
 // link. A DRAFT, never a send: it goes outside hiddenhelp.org, so admin reads
-// it first. The body's opening is placeholder text until admin supplies the
-// wording.
+// it first. Wording from admin, 20 Oct 2026.
 const WISHLIST_REQUEST_INTRO =
-  'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor ' +
-  'incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud ' +
-  'exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
+  'Good morning\n\n' +
+  'Thank you for referring this client to us. Please quote the referral number (in the ' +
+  'subject line) in all correspondence. You or the client now need to complete a wishlist ' +
+  'of items needed in the form below:';
 
 function wishlistRequestEmail(r) {
   const name = [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
