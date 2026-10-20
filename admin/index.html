@@ -877,6 +877,10 @@ a { color: inherit; text-decoration: none; }
 .plan-col-load { width: 104px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
 .plan-col-actions { width: 236px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .plan-big { color: var(--red); font-weight: 700; }
+.btn-link { font-size: 12px; color: var(--text3); text-decoration: underline; padding: 4px 2px; }
+.btn-link:hover { color: var(--text); }
+.wl-mark-sent { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
+.wl-mark-sent input { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
 .plan-prompt { display: inline-flex; gap: 6px; align-items: center; }
 .plan-prompt button { font-size: 11px; font-weight: 600; color: inherit; text-decoration: underline; padding: 0; }
 .item-pts { font-size: 12px; color: var(--text3); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -1111,6 +1115,7 @@ let showConvertForm = false;
 let showWishlist    = false;
 let editingWishlist = false;
 let showWlNote      = false;
+let markingWlSent   = false;   // the "Already sent? Mark it" date picker is open
 let showDuplicateSearch = false;
 let duplicateQuery = '';
 let volunteers     = [];
@@ -2375,6 +2380,7 @@ function selectReferral(r) {
   showConvertForm = false;
   showWishlist    = false;
   showWlNote      = false;
+  markingWlSent   = false;
   renderList();
   renderDetail(r);
   if (document.body.classList.contains('mobile')) {
@@ -2616,7 +2622,7 @@ function renderDetail(r) {
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>` : ''}
+        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>${wishlistMarkSentHtml(r)}` : ''}
         <!-- Ruled 15 Sep 2026: an unnumbered referral is never postable, and the
              button should not appear at all rather than appear and refuse. The
              gate covers Email and PDF too, not just Telegram — all three resolve
@@ -3585,6 +3591,33 @@ function wishlistRequestEmail(r) {
     body: `${WISHLIST_REQUEST_INTRO}\n\n${url}\n\n${WISHLIST_REQUEST_SIGNOFF}`,
     htmlBody: `${html(WISHLIST_REQUEST_INTRO)}<br><br><a href="${esc(url)}">HH Wishlist Form: Ref ${esc(r.referral_number)}</a><br><br>${html(WISHLIST_REQUEST_SIGNOFF)}`,
   };
+}
+
+// For wishlist links sent by hand before the button could send (before
+// 20 Oct 2026): nothing recorded those, so admin checks her Sent folder and
+// records the date here. Sends nothing; the button then reads "Wishlist email
+// sent" like one sent from the dashboard.
+function wishlistMarkSentHtml(r) {
+  if (r.wishlist_request_sent_at) return '';
+  if (!markingWlSent) return `<button class="btn-link" onclick="markingWlSent = true; renderDetail(selectedRef)"
+    title="Record a wishlist email sent by hand, without sending anything">Already sent? Mark it</button>`;
+  const today = ymd(new Date());
+  return `<span class="wl-mark-sent">Sent on <input type="date" id="wl-sent-date" value="${today}" max="${today}">
+    <button class="btn" onclick="markWishlistRequestSent()">Mark sent</button>
+    <button class="btn-link" onclick="markingWlSent = false; renderDetail(selectedRef)">Cancel</button></span>`;
+}
+
+async function markWishlistRequestSent() {
+  const r = selectedRef; if (!r) return;
+  const day = document.getElementById('wl-sent-date')?.value;
+  if (!day) { alert('Pick the date it was sent.'); return; }
+  // Midday local, so the stored instant cannot fall on the day before in UTC.
+  const ts = new Date(parseYmd(day).getTime() + 12 * 3600 * 1000).toISOString();
+  const { error } = await db.from('referrals').update({ wishlist_request_sent_at: ts }).eq('id', r.id);
+  if (error) { alert('Could not save: ' + error.message); return; }
+  r.wishlist_request_sent_at = ts;
+  markingWlSent = false;
+  renderDetail(r);
 }
 
 // Through the web app (sendWishlistRequest) so it comes from admin whoever is
