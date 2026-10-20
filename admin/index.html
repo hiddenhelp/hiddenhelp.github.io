@@ -3561,13 +3561,21 @@ const WISHLIST_REQUEST_INTRO =
   'Thank you for referring this client to us. Please quote the referral number (in the ' +
   'subject line) in all correspondence. You or the client now need to complete a wishlist ' +
   'of items needed in the form below:';
+const WISHLIST_REQUEST_SIGNOFF =
+  'Best wishes\n\n' +
+  'Wendy Whittaker\n' +
+  'Communications Manager\n' +
+  'Hidden Help\n' +
+  'Tel 07375994532\n' +
+  'UNIT 3 WHEAL ROSE ESTATE, SCORRIER, REDRUTH, TR16 5FJ\n' +
+  'My normal working hours are 9 am - 10.30 am Mon - Fri';
 
 function wishlistRequestEmail(r) {
   const name = [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
   return {
     to: r.referrers?.email || '',
     subject: `Hidden Help Wishlist for Completion - Client: ${name}, Ref: ${r.referral_number}`,
-    body: `${WISHLIST_REQUEST_INTRO}\n\n${WISHLIST_FORM_URL}${r.referral_number}`,
+    body: `${WISHLIST_REQUEST_INTRO}\n\n${WISHLIST_FORM_URL}${r.referral_number}\n\n${WISHLIST_REQUEST_SIGNOFF}`,
   };
 }
 
