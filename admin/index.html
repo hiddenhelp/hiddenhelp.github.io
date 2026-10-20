@@ -2616,7 +2616,7 @@ function renderDetail(r) {
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn" id="wishlist-link-btn" onclick="draftWishlistRequest()" title="Draft an email to the referrer with the client's wishlist link">${ICONS.mail}<span>Send wishlist email</span></button>` : ''}
+        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>` : ''}
         <!-- Ruled 15 Sep 2026: an unnumbered referral is never postable, and the
              button should not appear at all rather than appear and refuse. The
              gate covers Email and PDF too, not just Telegram — all three resolve
@@ -3552,10 +3552,11 @@ function flashButton(btn, text, color, originalText) {
 }
 
 // ── Wishlist request email ──────────────────────────────────
-// Replaced "Copy wishlist link" (Richard, 19 Oct 2026): drafts an email in
-// admin's mailbox to the referrer, with the client's pre-numbered wishlist
-// link. A DRAFT, never a send: it goes outside hiddenhelp.org, so admin reads
-// it first. Wording from admin, 20 Oct 2026.
+// Replaced "Copy wishlist link" (Richard, 19 Oct 2026): emails the referrer,
+// from admin's mailbox, the client's pre-numbered wishlist link. Sent, not
+// drafted, since 20 Oct 2026, after a confirmation. The server takes the
+// recipient from the referral itself, never from this page. Wording from
+// admin, 20 Oct 2026.
 const WISHLIST_REQUEST_INTRO =
   'Good morning\n\n' +
   'Thank you for referring this client to us. Please quote the referral number (in the ' +
@@ -3586,39 +3587,46 @@ function wishlistRequestEmail(r) {
   };
 }
 
-// Through the web app (draftWishlistRequest) so the draft is admin's whoever
-// is signed in. Until admin publishes the version that has it, the deployment
+// Through the web app (sendWishlistRequest) so it comes from admin whoever is
+// signed in. Until admin publishes the version that has it, the deployment
 // answers "unknown action" and this opens the same email in a Gmail compose
-// tab instead, which needs no attachment and so loses nothing.
-async function draftWishlistRequest() {
+// tab, where she presses Send herself; that cannot report back, so it is not
+// recorded as sent.
+async function sendWishlistRequest() {
   const r = selectedRef; if (!r) return;
   const btn = document.getElementById('wishlist-link-btn');
   const mail = wishlistRequestEmail(r);
   if (!mail.to) { alert('This referrer has no email address on record.'); return; }
+  const hasWebApp = typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL;
+  if (hasWebApp && !confirm(`Send the wishlist email for #${r.referral_number} to ${mail.to}?`)) return;
   const compose = () => window.open('https://mail.google.com/mail/?view=cm&fs=1'
     + `&to=${encodeURIComponent(mail.to)}&su=${encodeURIComponent(mail.subject)}`
     + `&body=${encodeURIComponent(mail.body)}`, '_blank');   // plain text only: no htmlBody here
   if (btn) btn.disabled = true;
   try {
-    if (typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL) {
-      const { data: { session } } = await db.auth.getSession();
-      const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, {
-        method: 'POST',
-        body: JSON.stringify({ token: session.access_token, action: 'draftWishlistRequest', ...mail }),
-      });
-      const out = await res.json();
-      if (out.error && /^unknown action/.test(out.error)) compose();
-      else if (out.error) throw new Error(out.error);
-      else window.open('https://mail.google.com/mail/#drafts', '_blank');
-    } else {
-      compose();
-    }
-    flashIconBtn(btn, ICONS.check, 'Drafted', ICONS.mail, 'Send wishlist email');
+    if (!hasWebApp) { compose(); return; }
+    const { data: { session } } = await db.auth.getSession();
+    const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, {
+      method: 'POST',
+      body: JSON.stringify({ token: session.access_token, action: 'sendWishlistRequest',
+                             referral_number: r.referral_number,
+                             subject: mail.subject, body: mail.body, htmlBody: mail.htmlBody }),
+    });
+    const out = await res.json();
+    if (out.error && /^unknown action/.test(out.error)) { compose(); return; }
+    if (out.error) throw new Error(out.error);
+    const ts = new Date().toISOString();
+    const { error } = await db.from('referrals').update({ wishlist_request_sent_at: ts }).eq('id', r.id);
+    if (error) console.error('wishlist_request_sent_at stamp failed:', error);
+    else r.wishlist_request_sent_at = ts;
+    renderDetail(r);
   } catch (e) {
     flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.mail, 'Send wishlist email');
     alert('Wishlist email failed: ' + e.message);
+  } finally {
+    const b = document.getElementById('wishlist-link-btn');
+    if (b) b.disabled = false;
   }
-  if (btn) btn.disabled = false;
 }
 
 // ── Wishlist actions (moved from wishlist.html) ──────────────
