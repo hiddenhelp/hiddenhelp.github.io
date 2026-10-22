@@ -3587,7 +3587,7 @@ function wishlistRequestEmail(r) {
   const html = t => esc(t).replace(/\n/g, '<br>');
   return {
     to: r.referrers?.email || '',
-    subject: `Wishlist for Completion - Client: ${name}, Ref: ${r.referral_number}`,
+    subject: `HH Referral - Client: ${name}, Ref: ${r.referral_number}`,
     body: `${WISHLIST_REQUEST_INTRO}\n\n${url}\n\n${WISHLIST_REQUEST_SIGNOFF}`,
     htmlBody: `${html(WISHLIST_REQUEST_INTRO)}<br><br><a href="${esc(url)}">HH Wishlist Form: Ref ${esc(r.referral_number)}</a><br><br>${html(WISHLIST_REQUEST_SIGNOFF)}`,
   };
