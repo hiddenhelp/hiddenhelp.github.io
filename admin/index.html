@@ -159,6 +159,27 @@ a { color: inherit; text-decoration: none; }
   transition: background .15s;
 }
 .sign-out-btn:hover { background: var(--bg2); }
+/* View tabs: the selected one joins the page below it. */
+.app-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 16px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.app-tab {
+  font-size: 13px;
+  color: var(--text2);
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  margin-bottom: -1px;
+  background: none;
+}
+.app-tab:hover { background: var(--bg2); }
+.app-tab.active { color: var(--accent); font-weight: 600; background: var(--bg); border-color: var(--border); }
 @media (max-width: 600px) { .app-header { height: auto; min-height: 48px; padding: 8px 14px; flex-wrap: wrap; gap: 8px; } }
 
 .app-body {
@@ -942,11 +963,13 @@ body.mobile input,
 body.mobile textarea,
 body.mobile select { font-size: 16px; }
 
-/* Four views plus Sign out do not fit one phone-width row: let them wrap. */
+/* Logo plus Sign out can still wrap on a narrow phone. */
 body.mobile .app-header { height: auto; min-height: 54px; padding: 8px 14px; flex-wrap: wrap; gap: 8px; }
 body.mobile .app-logo { font-size: 16px; }
 body.mobile .user-email { display: none; }
 body.mobile .sign-out-btn { font-size: 13px; padding: 8px 13px; }
+body.mobile .app-tabs { padding: 4px 6px 0; gap: 0; }
+body.mobile .app-tab { flex: 1; padding: 9px 4px; }   /* four share the row; fits a 320px phone */
 
 body.mobile .app-body { position: relative; }
 
@@ -1036,12 +1059,14 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
   <header class="app-header">
     <div class="app-logo">Hidden Help Admin</div>
     <span id="user-email" class="user-email"></span>
-    <button id="nav-referrals" class="sign-out-btn" onclick="setView('referrals')" style="display:none">Referrals</button>
-    <button id="nav-volunteers" class="sign-out-btn" onclick="setView('volunteers')">Volunteers</button>
-    <button id="nav-availability" class="sign-out-btn" onclick="setView('availability')">Availability</button>
-    <button id="nav-planner" class="sign-out-btn" onclick="setView('planner')">Planner</button>
     <button id="sign-out-btn" class="sign-out-btn">Sign out</button>
   </header>
+  <nav class="app-tabs">
+    <button id="nav-referrals" class="app-tab active" onclick="setView('referrals')">Referrals</button>
+    <button id="nav-planner" class="app-tab" onclick="setView('planner')">Planner</button>
+    <button id="nav-availability" class="app-tab" onclick="setView('availability')">Availability</button>
+    <button id="nav-volunteers" class="app-tab" onclick="setView('volunteers')">Volunteers</button>
+  </nav>
   <div class="app-body">
 
     <!-- Sidebar -->
@@ -1277,9 +1302,8 @@ function setView(view) {
   document.getElementById('volunteers-view').style.display = view === 'volunteers' ? 'block' : 'none';
   document.getElementById('availability-view').style.display = view === 'availability' ? 'block' : 'none';
   document.getElementById('planner-view').style.display = view === 'planner' ? 'block' : 'none';
-  // The header offers the views you are not on.
   for (const v of ['referrals', 'volunteers', 'availability', 'planner'])
-    document.getElementById('nav-' + v).style.display = v === view ? 'none' : '';
+    document.getElementById('nav-' + v).classList.toggle('active', v === view);
   if (view === 'volunteers') { editingVolId = null; loadAllVolunteers(); }
   if (view === 'availability') loadAvailability();
   if (view === 'planner') openPlanner();
