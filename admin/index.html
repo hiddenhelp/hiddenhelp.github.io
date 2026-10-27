@@ -1492,8 +1492,7 @@ function pkRefresh() {
       <button class="btn" id="pk-find" onclick="pkFind()">${ICONS.refresh}Find address</button>
       <button class="btn btn-maps" onclick="pkMaps()">${ICONS.map}Check on Google Maps</button>
     </div>
-    <div class="vol-hint" style="margin-top:10px">Wrong place? In Google Maps, right-click the right spot and click the
-      coordinates at the top of the menu, which copies them. Paste them here. A Google Maps link works too.</div>
+    ${PIN_HINT}
     <div style="display:flex;gap:8px;margin-top:4px">
       <input class="vol-input" id="pk-pin" placeholder="50.21310, -5.29890" style="flex:1">
       <button class="btn" onclick="pkPin()">Use this pin</button>
@@ -1520,9 +1519,9 @@ function pkMaps() {
   if (url) window.open(url, '_blank'); else alert('Enter the address first.');
 }
 
-async function pkCall(body) {
+async function pkCall(body, fn = 'pickups') {
   const { data: { session } } = await db.auth.getSession();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/pickups`, {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
     body: JSON.stringify(body),
@@ -1533,32 +1532,41 @@ async function pkCall(body) {
   return out;
 }
 
-// The deliveries' geocoder, ported into the pickups edge function
-// (geocode.mjs) so it answers at once, at any hour (27 Oct 2026).
+// The geocode edge function: answers at once, at any hour, and writes nothing.
 async function pkFind() {
   const addr = (pkSel.address || '').trim();
   if (!addr) { alert('Enter the address first.'); return; }
   const btn = document.getElementById('pk-find');
   btn.disabled = true; btn.textContent = 'Finding…';
   try {
-    const out = await pkCall({ action: 'geocode', address: addr });
+    const out = await pkCall({ action: 'lookup', address: addr }, 'geocode');
     if ((pkSel.address || '').trim() === addr)   // not if she retyped it meanwhile
       Object.assign(pkSel, { lat: out.lat, lon: out.lon, geocoded_address: out.matched, geocode_partial: out.partial });
   } catch (e) { alert(e.message); }
   pkRefresh();
 }
 
-async function pkPin() {
-  const v = document.getElementById('pk-pin').value.trim();
-  if (!v) return;
+const PIN_HINT = `<div class="vol-hint" style="margin-top:10px">Wrong place? In Google Maps, right-click the right spot and click the
+  coordinates at the top of the menu, which copies them. Paste them here. A Google Maps link works too.</div>`;
+
+// Coordinates from pasted text or a Maps link (short links are followed by the
+// pickups edge function), or null if she backs out.
+async function pinFrom(text) {
+  if (!text.trim()) return null;
   try {
-    const c = await pkCall({ action: 'resolve', url: v });
+    const c = await pkCall({ action: 'resolve', url: text.trim() });
     // Cornwall sits well inside this; outside it is usually lat and lon swapped.
     if ((c.lat < 49.8 || c.lat > 51.2 || c.lon < -6.5 || c.lon > -4)
-        && !confirm(`${c.lat}, ${c.lon} is not in Cornwall. Use it anyway?`)) return;
-    Object.assign(pkSel, { lat: c.lat, lon: c.lon, geocoded_address: null, geocode_partial: null });
-    pkRefresh();
-  } catch (e) { alert(e.message); }
+        && !confirm(`${c.lat}, ${c.lon} is not in Cornwall. Use it anyway?`)) return null;
+    return c;
+  } catch (e) { alert(e.message); return null; }
+}
+
+async function pkPin() {
+  const c = await pinFrom(document.getElementById('pk-pin').value);
+  if (!c) return;
+  Object.assign(pkSel, { lat: c.lat, lon: c.lon, geocoded_address: null, geocode_partial: null });
+  pkRefresh();
 }
 
 async function pkSave() {
@@ -3023,14 +3031,19 @@ function renderDetail(r) {
 
         ${r.fulfilment_type === 'delivery' ? `
         <div class="card">
-          <div class="card-title">Delivery address${client.drive_miles != null ? ` (${client.drive_miles} miles${client.drive_minutes != null ? ` / ${client.drive_minutes} min from Hidden Help` : ' from Hidden Help, straight-line — actual drive longer'})` : ''}</div>
+          <div class="card-title-row">
+            <div class="card-title">Delivery address${client.drive_miles != null ? ` (${client.drive_miles} miles${client.drive_minutes != null ? ` / ${client.drive_minutes} min from Hidden Help` : ' from Hidden Help, straight-line — actual drive longer'})` : ''}</div>
+            ${r.client_id ? `<button class="btn-edit-card${editingSection==='address'?' active':''}" onclick="toggleEdit('address')">${editingSection==='address'?'Cancel':'Edit'}</button>` : ''}
+          </div>
+          ${editingSection === 'address' ? addressEditorHtml(client, r.client_id) : `
           <div class="address-box">
             ${showGiven ? `<div class="address-label">Geocoded to</div>` : ''}
             ${client.geocoded_address ? fmtAddress(client.geocoded_address).map(esc).join('<br>') : (client.address ? esc(client.address) : '<span style="color:var(--text3)">No address recorded</span>')}
             ${client.geocode_partial ? `<div class="address-note">${ICONS.warn} Partial match — verify before delivery</div>` : ''}
             ${showGiven ? `<div class="address-given"><div class="address-label">As given</div>${esc(client.address)}</div>` : ''}
+            ${geoStateNote(client)}
           </div>
-          ${mapsUrl ? `<div style="text-align:right;margin-top:8px;display:flex;gap:8px;justify-content:flex-end">${deliveryMapUrl ? `<a href="${deliveryMapUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Delivery Map</span></a>` : ''}<a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Google Maps</span></a></div>` : ''}
+          ${mapsUrl ? `<div style="text-align:right;margin-top:8px;display:flex;gap:8px;justify-content:flex-end">${deliveryMapUrl ? `<a href="${deliveryMapUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Delivery Map</span></a>` : ''}<a href="${mapsUrl}" target="_blank" class="btn btn-maps">${ICONS.map}<span>Google Maps</span></a></div>` : ''}`}
         </div>` : `
         <div class="card">
           <div class="card-title">Collection instructions</div>
@@ -3446,72 +3459,110 @@ async function patchClient(clientId, fields) {
   });
 }
 
-// Flip a referral between delivery and collection.
-//
-// Goes through the Apps Script web app rather than patching Supabase directly,
-// because a conversion is not just a field: a delivery needs coordinates, and
-// geocoding needs OS_PLACES_API_KEY, which is a Script Property and has no
-// business in a browser. Without them the referral has no Google Maps link, no
-// Delivery Map link, no drive miles and no town — which is what the old
-// convertToDelivery produced every time.
-//
-// No local fallback on purpose. A conversion that silently skips the geocode is
-// exactly the half-done state this replaces; better to refuse and say why.
+// Flip a referral between delivery and collection. Since 27 Oct 2026 this is
+// a plain update plus the geocode edge function; it went through the Apps
+// Script web app only because the geocoder's key lived there.
 async function convertFulfilment(referralId, want) {
   const r = selectedRef; if (!r) return;
-  if (typeof DRAFT_EMAIL_WEBAPP_URL === 'undefined' || !DRAFT_EMAIL_WEBAPP_URL) {
-    alert('The Apps Script web app URL is not configured, so the address cannot be '
-        + 'geocoded and the conversion would leave the referral off the map. '
-        + 'Set DRAFT_EMAIL_WEBAPP_URL in config.js first.');
-    return;
+  const val = id => document.getElementById(id)?.value?.trim() || null;
+  const patch = { fulfilment_type: want };
+  if (want === 'delivery') {
+    if (val('convert-pay-recipient')) patch.payment_recipient = val('convert-pay-recipient');
+    if (val('convert-pay-method'))    patch.payment_method    = val('convert-pay-method');
+  } else {
+    patch.collection_instructions = val('convert-instructions');
+    // Never implicit: a delivery charge may already have been taken.
+    if (document.getElementById('convert-clear-payment')?.checked) {
+      patch.payment_method = null; patch.payment_recipient = null;
+    }
   }
-  if (!r.referral_number) {
-    alert('This referral has no number yet, so it cannot be converted. '
-        + 'Put one in "Client No." on Form Responses 1 first.');
-    return;
-  }
-
   const btn = document.getElementById('convert-go');
   if (btn) { btn.disabled = true; btn.textContent = 'Converting…'; }
   try {
-    const { data: { session } } = await db.auth.getSession();
-    const body = {
-      token: session.access_token,
-      action: 'convertFulfilment',
-      referral_number: r.referral_number,
-      fulfilment_type: want,
-    };
-    if (want === 'delivery') {
-      body.address           = document.getElementById('convert-address')?.value?.trim() || null;
-      body.payment_recipient = document.getElementById('convert-pay-recipient')?.value || null;
-      body.payment_method    = document.getElementById('convert-pay-method')?.value || null;
-    } else {
-      body.collection_instructions =
-        document.getElementById('convert-instructions')?.value?.trim() || null;
-      body.clear_payment = !!document.getElementById('convert-clear-payment')?.checked;
+    const { error } = await db.from('referrals').update(patch).eq('id', r.id);
+    if (error) throw new Error(error.message);
+    // A delivery needs a pin. Coordinates stay on a collection, so converting
+    // back costs nothing.
+    let warning = null;
+    if (want === 'delivery' && r.client_id) {
+      const c = r.clients || {};
+      const address = val('convert-address') || c.address || '';
+      if (!address) warning = 'Converted, but this client has no address, so there is no map pin. Add one on the Delivery address card.';
+      else if (address !== c.address || c.latitude == null) {
+        const out = await pkCall({ action: 'client', client_id: r.client_id, address }, 'geocode');
+        if (!out.geo) warning = `Converted, but no map pin was found for "${address}". Edit the address or drop a pin.`;
+        else if (out.geo.partial) warning = `Converted, but the match is partial: "${out.geo.matched}". Check the address before anyone drives out.`;
+      }
     }
-
-    const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, { method: 'POST', body: JSON.stringify(body) });
-    const out = await res.json();
-    if (out.error) throw new Error(out.error);
-
     showConvertForm = false;
-    // Re-read rather than patching the local copy: the server may have written
-    // coordinates, geocoded_address, geocode_partial and drive metrics onto the
-    // client, and the address and map cards all render off those.
     await loadReferrals();
-
-    if (out.warning) alert(out.warning);
-    else if (out.geocode?.partial) {
-      alert('Converted, but the geocode is a partial match: "' + out.geocode.matched
-          + '". Check the address before anyone drives out.');
-    }
+    if (warning) alert(warning);
   } catch (e) {
     console.error('Convert error:', e);
     alert('Conversion failed: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Confirm conversion'; }
   }
+}
+
+// ── Delivery address editing (27 Oct 2026) ─────────────────
+// Every client's address is looked up by the database (the geocode edge
+// function; pg_cron sweeps any whose address differs from geocoded_for). Here
+// she can change it, see the answer at once, and drop a pin by hand.
+const geoPending = c => String(c.address || '').trim() !== String(c.geocoded_for || '').trim();
+
+function geoStateNote(c) {
+  if (!String(c.address || '').trim()) return '';
+  if (geoPending(c)) return `<div class="address-note">Finding the map pin…</div>`;
+  if (c.latitude == null) return `<div class="address-note">${ICONS.warn} No map pin found for this address — edit it, or drop a pin</div>`;
+  return '';
+}
+
+function addressEditorHtml(c, clientId) {
+  return `<textarea id="addr-edit" class="cancel-reason-area" style="height:72px;">${esc(c.address || '')}</textarea>
+    <div class="pk-actions" style="margin-top:8px">
+      <button class="btn-save-edit" id="addr-save" onclick="saveClientAddress(${clientId})">Save and find address</button>
+      <button class="btn btn-maps" onclick="addrMaps()">${ICONS.map}Check on Google Maps</button>
+    </div>
+    ${PIN_HINT}
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <input class="vol-input" id="addr-pin" placeholder="50.21310, -5.29890" style="flex:1">
+      <button class="btn" onclick="saveClientPin(${clientId})">Use this pin</button>
+    </div>`;
+}
+
+function addrMaps() {
+  const c = selectedRef?.clients || {}, typed = document.getElementById('addr-edit').value.trim();
+  if (typed === (c.address || '').trim() && c.latitude != null) window.open(`https://www.google.com/maps?q=${c.latitude},${c.longitude}`, '_blank');
+  else if (typed) window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(typed), '_blank');
+  else alert('Enter the address first.');
+}
+
+async function saveClientAddress(clientId) {
+  const address = document.getElementById('addr-edit').value;
+  const btn = document.getElementById('addr-save');
+  btn.disabled = true; btn.textContent = 'Finding…';
+  try {
+    const out = await pkCall({ action: 'client', client_id: clientId, address }, 'geocode');
+    editingSection = null;
+    await loadReferrals();
+    if (address.trim() && !out.geo) alert('Saved, but no map pin was found for that address. Check it, or drop a pin.');
+    else if (out.geo?.partial) alert(`Saved. The match is partial: "${out.geo.matched}". Check it before anyone drives out.`);
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false; btn.textContent = 'Save and find address';
+  }
+}
+
+async function saveClientPin(clientId) {
+  const c = await pinFrom(document.getElementById('addr-pin').value);
+  if (!c) return;
+  try {
+    await pkCall({ action: 'pin', client_id: clientId, lat: c.lat, lon: c.lon,
+                   address: document.getElementById('addr-edit').value }, 'geocode');
+    editingSection = null;
+    await loadReferrals();
+  } catch (e) { alert(e.message); }
 }
 
 // Runs a web* action in DraftEmail.gs through Supabase's admin_jobs queue,
