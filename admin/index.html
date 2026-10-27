@@ -1533,18 +1533,16 @@ async function pkCall(body) {
   return out;
 }
 
-// The deliveries' own geocoder (geocodeAddress, via webGeocodePickup), which
-// runs on the admin_jobs queue: 8–11am only, and up to a minute.
+// The deliveries' geocoder, ported into the pickups edge function
+// (geocode.mjs) so it answers at once, at any hour (27 Oct 2026).
 async function pkFind() {
   const addr = (pkSel.address || '').trim();
   if (!addr) { alert('Enter the address first.'); return; }
   const btn = document.getElementById('pk-find');
-  btn.disabled = true; btn.textContent = 'Finding… (up to a minute)';
+  btn.disabled = true; btn.textContent = 'Finding…';
   try {
-    const out = await runAdminJob('geocodePickup', { address: addr });
-    if (out.queued) alert('The address finder only runs 8–11am. Paste a pin from Google Maps instead, or try again then.');
-    else if (out.error) alert(out.error);
-    else if ((pkSel.address || '').trim() === addr)   // not if she retyped it meanwhile
+    const out = await pkCall({ action: 'geocode', address: addr });
+    if ((pkSel.address || '').trim() === addr)   // not if she retyped it meanwhile
       Object.assign(pkSel, { lat: out.lat, lon: out.lon, geocoded_address: out.matched, geocode_partial: out.partial });
   } catch (e) { alert(e.message); }
   pkRefresh();
