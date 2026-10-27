@@ -1336,6 +1336,10 @@ function pickupMapsUrl(p) {
   return `https://www.google.com/maps?q=${p.lat},${p.lon}&label=${label}`
 }
 
+// Notes take Telegram's own markers, **bold** and __italic__ (27 Oct 2026).
+// Applied after escaping, so these are the only tags that can reach the post.
+const pickupFormat = s => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/__(.+?)__/g, '<i>$1</i>')
+
 // P4 Sofa, 2 armchairs
 // Jean Trelawny 01209714532
 // <a href="…">12 Trevu Road, Camborne TR14 8SR</a>
@@ -1349,7 +1353,7 @@ function pickupMessage(p) {
   const addr = oneLine(p.address)
   const url = pickupMapsUrl(p)
   if (addr) lines.push(url ? `<a href="${pickupEsc(url)}">${pickupEsc(addr)}</a>` : pickupEsc(addr))
-  if (p.notes && p.notes.trim()) lines.push(pickupEsc(p.notes.trim()))
+  if (p.notes && p.notes.trim()) lines.push(pickupFormat(pickupEsc(p.notes.trim())))
   return lines.join('\n')
 }
 // pickup-message:end
@@ -1449,11 +1453,11 @@ function pkForm(p) {
     <div class="vol-edit-grid" style="max-width:none">
       <div style="grid-column:1/-1">${field('Donation items', 'items')}</div>
       ${field('Donor name', 'donor_name')}
-      <div class="vol-field"><label>Donor phone</label><input class="vol-input" inputmode="tel" value="${esc(p.donor_phone || '')}" oninput="pkSet('donor_phone', this.value)"><div id="pk-phone-warn"></div></div>
+      <div class="vol-field"><label>Donor phone</label><input class="vol-input" inputmode="tel" value="${esc(p.donor_phone || '')}" oninput="pkSet('donor_phone', this.value); pkPhoneWarn(false)" onblur="pkPhoneWarn(true)"><div id="pk-phone-warn">${phoneWarn(normalisePhone(p.donor_phone))}</div></div>
       <div class="vol-field" style="grid-column:1/-1"><label>Donor address</label>
         <textarea class="vol-textarea" oninput="pkSet('address', this.value)">${esc(p.address || '')}</textarea>
         <div class="pk-loc" id="pk-loc"></div></div>
-      <div style="grid-column:1/-1">${field('Notes (optional)', 'notes')}</div>
+      <div style="grid-column:1/-1">${field('Notes (optional)', 'notes')}<div class="vol-hint">**bold**, __italic__</div></div>
     </div>
     <div class="vol-field"><label>Telegram preview</label><div class="pk-preview" id="pk-preview"></div></div>
     <div class="pk-actions" id="pk-actions"></div>
@@ -1469,9 +1473,14 @@ function pkSet(key, value) {
   pkRefresh();
 }
 
+// Judged once she leaves the field, not at every keystroke of a number still
+// being typed (27 Oct 2026).
+function pkPhoneWarn(show) {
+  document.getElementById('pk-phone-warn').innerHTML = show ? phoneWarn(normalisePhone(pkSel.donor_phone)) : '';
+}
+
 function pkRefresh() {
   const p = pkSel;
-  document.getElementById('pk-phone-warn').innerHTML = phoneWarn(normalisePhone(p.donor_phone));
   const located = p.lat != null && p.lon != null;
   const where = !located ? `<span class="pk-sub">Not located yet.</span>`
     : p.geocoded_address ? `Found: ${esc(p.geocoded_address)} ${p.geocode_partial
