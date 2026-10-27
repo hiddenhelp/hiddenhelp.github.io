@@ -1505,10 +1505,10 @@ function pkRefresh() {
   const b = (label, fn, cls = 'btn', style = '') => `<button class="${cls}" style="${style}" onclick="${fn}">${label}</button>`;
   document.getElementById('pk-actions').innerHTML = (p.message_id
     ? (dirty || state === 'changed' ? b(`${ICONS.send}Repost changes`, 'pkPost()', 'btn btn-save-edit') : '')
-      + (dirty ? b('Save without reposting', 'pkSave()') : '')
+      + b('Save without reposting', 'pkSaveClick()')
       + b(`${ICONS.check}Picked up`, 'pkRemove(true)')
     : b(`${ICONS.send}Post to Telegram`, 'pkPost()', 'btn btn-save-edit')
-      + (dirty ? b('Save draft', 'pkSave()') : ''))
+      + b('Save draft', 'pkSaveClick()'))
     + '<span style="flex:1"></span>'
     + b(`${ICONS.trash}Discard`, 'pkRemove(false)', 'btn', 'color:var(--red)');
 }
@@ -1576,6 +1576,15 @@ async function pkSave() {
   pkSel = { ...data };
   await loadPickups();
   return data;
+}
+
+// Always offered, and always answered: a save that only made its own button
+// disappear looked like it had done nothing (27 Oct 2026).
+async function pkSaveClick() {
+  if (!await pkSave()) return;
+  document.querySelector('#pk-actions [onclick="pkSaveClick()"]')?.insertAdjacentHTML('afterend',
+    `<span class="pk-saved" style="color:var(--green);font-size:12px;display:inline-flex;align-items:center;gap:4px">${ICONS.check}Saved</span>`);
+  setTimeout(() => document.querySelector('#pk-actions .pk-saved')?.remove(), 3000);
 }
 
 async function pkPost() {
