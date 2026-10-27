@@ -948,6 +948,19 @@ a { color: inherit; text-decoration: none; }
 .vol-checks { display: flex; gap: 18px; align-items: center; grid-column: 1 / -1; }
 .vol-checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text2); cursor: pointer; }
 .vol-hint { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.pk-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 640px); gap: 16px; align-items: start; }
+.pk-list { padding: 0; overflow: hidden; }
+.pk-list-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+.pk-row { display: flex; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
+.pk-row:hover { background: var(--bg2); }
+.pk-row.sel { background: var(--accent-bg); }
+.pk-code { font-weight: 600; color: var(--accent); min-width: 30px; }
+.pk-sub { color: var(--text3); font-size: 12px; }
+.pk-loc { margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg); font-size: 12px; }
+.pk-preview { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.pk-preview a { color: var(--blue); text-decoration: underline; }
+.pk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+@media (max-width: 800px) { .pk-layout { grid-template-columns: minmax(0, 1fr); } }
 .vol-subhead { grid-column: 1 / -1; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; margin-top: 6px; }
 .dbs-ok { color: var(--text2); }
 .dbs-off { color: var(--text3); }
@@ -1066,6 +1079,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
     <button id="nav-planner" class="app-tab" onclick="setView('planner')">Planner</button>
     <button id="nav-availability" class="app-tab" onclick="setView('availability')">Availability</button>
     <button id="nav-volunteers" class="app-tab" onclick="setView('volunteers')">Volunteers</button>
+    <button id="nav-pickups" class="app-tab" onclick="setView('pickups')">Pickups</button>
   </nav>
   <div class="app-body">
 
@@ -1112,6 +1126,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
 
     <!-- Planner -->
     <div id="planner-view" class="volunteers-view" style="display:none"></div>
+    <div id="pickups-view" class="volunteers-view" style="display:none"></div>
 
   </div>
 </div>
@@ -1146,7 +1161,7 @@ let duplicateQuery = '';
 let volunteers     = [];
 let formItems      = [];   // what the wishlist form offers now — wishlist_form_items
 
-let currentView   = 'referrals';  // 'referrals' | 'volunteers' | 'availability' | 'planner'
+let currentView   = 'referrals';  // 'referrals' | 'volunteers' | 'availability' | 'planner' | 'pickups'
 let allVolunteers = [];
 let editingVolId  = null;         // volunteer id | 'new' | null
 let volFilter     = 'active';     // 'active' | 'all'
@@ -1293,6 +1308,299 @@ function formItemFor(desc) {
   return formItems.find(i => i.item.replace(/\s+/g, ' ').trim().toLowerCase() === k) || null;
 }
 
+// ── Pickups view ────────────────────────────────────────────
+// Donor pickups (pickups table, built 27 Oct 2026). Drafts live only here; the
+// pickups edge function posts, reposts and deletes in the channel. "Picked up"
+// and "Discard" both delete the row: no history is kept, and that frees its
+// P-number. A pickup posted to the channel by hand is not seen here at all.
+let allPickups = [];
+let pkSel = null;      // working copy of the open pickup; no id = not saved yet
+
+// A verbatim copy of supabase/functions/pickups/message.mjs, so the preview
+// is the post. test_pickups.mjs fails if the two drift.
+// pickup-message:start
+
+const pickupEsc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+
+// Spaces stripped so Telegram recognises it as a phone number (ruled 27 Oct 2026).
+const pickupPhone = s => String(s ?? '').replace(/\s+/g, '')
+
+// The same link the deliveries use (post-to-telegram): pin plus the address as
+// its label. Brackets encoded too, because the bot reads this post back as
+// markdown, [text](url), and a ")" in the url would end the link early.
+function pickupMapsUrl(p) {
+  if (p.lat == null || p.lon == null) return null
+  const label = encodeURIComponent(p.address || p.geocoded_address || '')
+    .replace(/\(/g, '%28').replace(/\)/g, '%29')
+  return `https://www.google.com/maps?q=${p.lat},${p.lon}&label=${label}`
+}
+
+// P4 Sofa, 2 armchairs
+// Jean Trelawny 01209714532
+// <a href="…">12 Trevu Road, Camborne TR14 8SR</a>
+// Ring before — side gate
+// The first two lines are the shape hh_utils.parse_collection_message reads.
+function pickupMessage(p) {
+  const oneLine = s => String(s ?? '').replace(/\s*\n\s*/g, ', ').trim()
+  const lines = [`P${p.code} ${pickupEsc(oneLine(p.items))}`]
+  const donor = [oneLine(p.donor_name), pickupPhone(p.donor_phone)].filter(Boolean).join(' ')
+  if (donor) lines.push(pickupEsc(donor))
+  const addr = oneLine(p.address)
+  const url = pickupMapsUrl(p)
+  if (addr) lines.push(url ? `<a href="${pickupEsc(url)}">${pickupEsc(addr)}</a>` : pickupEsc(addr))
+  if (p.notes && p.notes.trim()) lines.push(pickupEsc(p.notes.trim()))
+  return lines.join('\n')
+}
+// pickup-message:end
+
+const pkTidy = s => String(s ?? '').trim() || null;
+
+// What a save would write, so the same object answers "unsaved changes?".
+function pkRow(p) {
+  return {
+    code: p.code, items: pkTidy(p.items), donor_name: pkTidy(p.donor_name),
+    donor_phone: normalisePhone(p.donor_phone), address: pkTidy(p.address),
+    lat: p.lat ?? null, lon: p.lon ?? null, geocoded_address: p.geocoded_address ?? null,
+    geocode_partial: p.geocode_partial ?? null, notes: pkTidy(p.notes),
+  };
+}
+function pkDirty(p = pkSel) {
+  if (!p) return false;
+  const saved = allPickups.find(x => x.id === p.id);
+  if (!saved) return true;
+  const row = pkRow(p);
+  return Object.keys(row).some(k => (saved[k] ?? null) !== row[k]);
+}
+function pkState(p) {
+  if (!p.message_id) return 'draft';
+  return p.posted_at && p.updated_at > p.posted_at ? 'changed' : 'posted';
+}
+const PK_TAG = { draft: '<span class="tag tag-wishlist">Draft</span>',
+                 posted: '<span class="tag tag-completed">Posted</span>',
+                 changed: '<span class="tag tag-cancelled">Changed, not reposted</span>' };
+
+async function loadPickups() {
+  const el = document.getElementById('pickups-view');
+  if (!allPickups.length) el.innerHTML = '<div class="loading">Loading pickups…</div>';
+  const { data, error } = await db.from('pickups').select('*').order('code');
+  if (error) { el.innerHTML = `<div class="loading">Failed to load: ${esc(error.message)}</div>`; return; }
+  allPickups = data || [];
+  if (pkSel?.id) {
+    const fresh = allPickups.find(x => x.id === pkSel.id);
+    pkSel = fresh ? { ...fresh } : null;
+  }
+  renderPickups();
+}
+
+function pkFreeCodes(exceptId) {
+  const taken = new Set(allPickups.filter(x => x.id !== exceptId).map(x => x.code));
+  return Array.from({ length: 15 }, (_, i) => i + 1).filter(n => !taken.has(n));
+}
+
+function pkLeave() {
+  return !pkDirty() || confirm(`P${pkSel.code} has unsaved changes. Leave without saving?`);
+}
+function pkOpen(id) {
+  if (pkSel?.id === id || !pkLeave()) return;
+  pkSel = { ...allPickups.find(x => x.id === id) };
+  renderPickups();
+}
+function pkNew() {
+  if (!pkLeave()) return;
+  const free = pkFreeCodes();
+  if (!free.length) { alert('All 15 pickup numbers are in use. Mark one picked up first.'); return; }
+  pkSel = { code: free[0] };
+  renderPickups();
+}
+
+function renderPickups() {
+  const el = document.getElementById('pickups-view');
+  const rows = allPickups.map(p => `
+    <div class="pk-row${pkSel?.id === p.id ? ' sel' : ''}" onclick="pkOpen(${p.id})">
+      <span class="pk-code">P${p.code}</span>
+      <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc(p.donor_name || '')}</span></span>
+      ${PK_TAG[pkState(p)]}
+    </div>`).join('');
+  el.innerHTML = `
+    <div class="vol-view-header"><h2>Pickups</h2></div>
+    <div class="pk-layout">
+      <div class="card pk-list">
+        <div class="pk-list-head"><span style="flex:1">Active <span class="pk-sub">${allPickups.length} of 15</span></span>
+          <button class="btn" onclick="pkNew()">New pickup</button></div>
+        ${rows || '<div class="pk-row pk-sub" style="cursor:default">No active pickups</div>'}
+      </div>
+      <div>${pkSel ? pkForm(pkSel) : '<div class="pk-sub" style="padding:12px">Open a pickup, or start a new one.</div>'}</div>
+    </div>`;
+  if (pkSel) pkRefresh();
+}
+
+function pkForm(p) {
+  const field = (label, key, extra = '') =>
+    `<div class="vol-field"><label>${label}</label><input class="vol-input" value="${esc(p[key] || '')}" oninput="pkSet('${key}', this.value)" ${extra}></div>`;
+  const code = p.message_id
+    ? `<span style="font-size:18px;font-weight:600">P${p.code}</span>
+       <a class="pk-sub" style="text-decoration:underline" target="_blank" href="https://t.me/c/2096649507/${p.message_id}">View post</a>`
+    : `<select class="vol-input" style="width:auto" onchange="pkSet('code', +this.value)">${pkFreeCodes(p.id).map(n =>
+        `<option value="${n}"${n === p.code ? ' selected' : ''}>P${n}</option>`).join('')}</select>
+       <span class="pk-sub">${p.id ? 'Draft' : 'New'} — not posted yet</span>`;
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">${code}</div>
+    <div class="vol-edit-grid" style="max-width:none">
+      <div style="grid-column:1/-1">${field('Donation items', 'items')}</div>
+      ${field('Donor name', 'donor_name')}
+      <div class="vol-field"><label>Donor phone</label><input class="vol-input" inputmode="tel" value="${esc(p.donor_phone || '')}" oninput="pkSet('donor_phone', this.value)"><div id="pk-phone-warn"></div></div>
+      <div class="vol-field" style="grid-column:1/-1"><label>Donor address</label>
+        <textarea class="vol-textarea" oninput="pkSet('address', this.value)">${esc(p.address || '')}</textarea>
+        <div class="pk-loc" id="pk-loc"></div></div>
+      <div style="grid-column:1/-1">${field('Notes (optional)', 'notes')}</div>
+    </div>
+    <div class="vol-field"><label>Telegram preview</label><div class="pk-preview" id="pk-preview"></div></div>
+    <div class="pk-actions" id="pk-actions"></div>
+  </div>`;
+}
+
+// Updates the parts that depend on the fields without re-rendering the inputs,
+// so typing keeps its focus.
+function pkSet(key, value) {
+  pkSel[key] = value;
+  // A location belongs to the address it was found for.
+  if (key === 'address') Object.assign(pkSel, { lat: null, lon: null, geocoded_address: null, geocode_partial: null });
+  pkRefresh();
+}
+
+function pkRefresh() {
+  const p = pkSel;
+  document.getElementById('pk-phone-warn').innerHTML = phoneWarn(normalisePhone(p.donor_phone));
+  const located = p.lat != null && p.lon != null;
+  const where = !located ? `<span class="pk-sub">Not located yet.</span>`
+    : p.geocoded_address ? `Found: ${esc(p.geocoded_address)} ${p.geocode_partial
+        ? `<span class="tag tag-wishlist">Partial match — check it</span>` : `<span class="tag tag-completed">Exact</span>`}`
+    : `Pin set by hand: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+  document.getElementById('pk-loc').innerHTML = `
+    <div>${where}</div>
+    <div class="pk-actions" style="margin-top:8px">
+      <button class="btn" id="pk-find" onclick="pkFind()">${ICONS.refresh}Find address</button>
+      <button class="btn btn-maps" onclick="pkMaps()">${ICONS.map}Check on Google Maps</button>
+    </div>
+    <div class="vol-hint" style="margin-top:10px">Wrong place? In Google Maps, right-click the right spot and click the
+      coordinates at the top of the menu, which copies them. Paste them here. A Google Maps link works too.</div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <input class="vol-input" id="pk-pin" placeholder="50.21310, -5.29890" style="flex:1">
+      <button class="btn" onclick="pkPin()">Use this pin</button>
+    </div>`;
+  document.getElementById('pk-preview').innerHTML =
+    p.items?.trim() ? pickupMessage(pkRow(p)) : '<span class="pk-sub">Enter the donation items</span>';
+
+  const dirty = pkDirty(), state = p.message_id ? pkState(p) : 'draft';
+  const b = (label, fn, cls = 'btn', style = '') => `<button class="${cls}" style="${style}" onclick="${fn}">${label}</button>`;
+  document.getElementById('pk-actions').innerHTML = (p.message_id
+    ? (dirty || state === 'changed' ? b(`${ICONS.send}Repost changes`, 'pkPost()', 'btn btn-save-edit') : '')
+      + (dirty ? b('Save without reposting', 'pkSave()') : '')
+      + b(`${ICONS.check}Picked up`, 'pkRemove(true)')
+    : b(`${ICONS.send}Post to Telegram`, 'pkPost()', 'btn btn-save-edit')
+      + (dirty ? b('Save draft', 'pkSave()') : ''))
+    + '<span style="flex:1"></span>'
+    + b(`${ICONS.trash}Discard`, 'pkRemove(false)', 'btn', 'color:var(--red)');
+}
+
+function pkMaps() {
+  const p = pkSel;
+  const url = pickupMapsUrl(pkRow(p))
+    || (p.address?.trim() ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.address.trim()) : null);
+  if (url) window.open(url, '_blank'); else alert('Enter the address first.');
+}
+
+async function pkCall(body) {
+  const { data: { session } } = await db.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/pickups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify(body),
+  });
+  let out = {};
+  try { out = await res.json(); } catch (_) {}
+  if (!res.ok || out.error) throw new Error(out.error || `HTTP ${res.status}`);
+  return out;
+}
+
+// The deliveries' own geocoder (geocodeAddress, via webGeocodePickup), which
+// runs on the admin_jobs queue: 8–11am only, and up to a minute.
+async function pkFind() {
+  const addr = (pkSel.address || '').trim();
+  if (!addr) { alert('Enter the address first.'); return; }
+  const btn = document.getElementById('pk-find');
+  btn.disabled = true; btn.textContent = 'Finding… (up to a minute)';
+  try {
+    const out = await runAdminJob('geocodePickup', { address: addr });
+    if (out.queued) alert('The address finder only runs 8–11am. Paste a pin from Google Maps instead, or try again then.');
+    else if (out.error) alert(out.error);
+    else if ((pkSel.address || '').trim() === addr)   // not if she retyped it meanwhile
+      Object.assign(pkSel, { lat: out.lat, lon: out.lon, geocoded_address: out.matched, geocode_partial: out.partial });
+  } catch (e) { alert(e.message); }
+  pkRefresh();
+}
+
+async function pkPin() {
+  const v = document.getElementById('pk-pin').value.trim();
+  if (!v) return;
+  try {
+    const c = await pkCall({ action: 'resolve', url: v });
+    // Cornwall sits well inside this; outside it is usually lat and lon swapped.
+    if ((c.lat < 49.8 || c.lat > 51.2 || c.lon < -6.5 || c.lon > -4)
+        && !confirm(`${c.lat}, ${c.lon} is not in Cornwall. Use it anyway?`)) return;
+    Object.assign(pkSel, { lat: c.lat, lon: c.lon, geocoded_address: null, geocode_partial: null });
+    pkRefresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function pkSave() {
+  const p = pkSel, row = pkRow(p);
+  if (!row.items) { alert('Enter the donation items first.'); return null; }
+  if (p.id && !pkDirty()) return p;
+  const q = p.id
+    ? db.from('pickups').update({ ...row, updated_at: new Date().toISOString() }).eq('id', p.id)
+    : db.from('pickups').insert(row);
+  const { data, error } = await q.select().single();
+  if (error) {
+    alert(error.code === '23505' ? `P${p.code} has just been taken. Pick another number.` : error.message);
+    return null;
+  }
+  pkSel = { ...data };
+  await loadPickups();
+  return data;
+}
+
+async function pkPost() {
+  if (pkSel.lat == null && !confirm('This pickup has no map location, so it will post without a map link '
+      + 'and stay off the delivery map. Post anyway?')) return;
+  const p = await pkSave();
+  if (!p) return;
+  const btn = document.querySelector('#pk-actions .btn-save-edit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Posting…'; }
+  try {
+    const out = await pkCall({ action: 'post', id: p.id });
+    if (out.warning) alert(out.warning);
+  } catch (e) { alert(e.message); }
+  await loadPickups();
+}
+
+async function pkRemove(pickedUp) {
+  const p = pkSel;
+  if (!p.id) { pkSel = null; renderPickups(); return; }
+  const post = p.message_id ? ' Its Telegram post is deleted.' : '';
+  if (!confirm((pickedUp ? `Mark P${p.code} picked up?` : `Discard P${p.code}?`) + post + ` P${p.code} becomes free.`)) return;
+  try {
+    if (p.message_id) await pkCall({ action: 'delete', id: p.id });
+    else {
+      const { error } = await db.from('pickups').delete().eq('id', p.id);
+      if (error) throw new Error(error.message);
+    }
+  } catch (e) { alert(e.message); return; }
+  pkSel = null;
+  await loadPickups();
+}
+
 // ── Volunteers view ─────────────────────────────────────────
 function setView(view) {
   currentView = view;
@@ -1302,11 +1610,13 @@ function setView(view) {
   document.getElementById('volunteers-view').style.display = view === 'volunteers' ? 'block' : 'none';
   document.getElementById('availability-view').style.display = view === 'availability' ? 'block' : 'none';
   document.getElementById('planner-view').style.display = view === 'planner' ? 'block' : 'none';
-  for (const v of ['referrals', 'volunteers', 'availability', 'planner'])
+  document.getElementById('pickups-view').style.display = view === 'pickups' ? 'block' : 'none';
+  for (const v of ['referrals', 'volunteers', 'availability', 'planner', 'pickups'])
     document.getElementById('nav-' + v).classList.toggle('active', v === view);
   if (view === 'volunteers') { editingVolId = null; loadAllVolunteers(); }
   if (view === 'availability') loadAvailability();
   if (view === 'planner') openPlanner();
+  if (view === 'pickups') loadPickups();
 }
 
 async function loadAllVolunteers() {
