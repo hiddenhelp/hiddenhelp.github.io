@@ -916,6 +916,7 @@ a { color: inherit; text-decoration: none; }
 .plan-items-btn { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--text2); padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
 .plan-items-btn.active { background: var(--bg2); }
 .plan-over { color: var(--red); }
+.plan-kinds { padding: 10px 12px 0; }
 .tag-pickup { background: var(--purple-bg); color: var(--purple); }
 .plan-diamond { box-sizing: border-box; transform: rotate(45deg); border: 2px solid; }
 .plan-date { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
@@ -1978,6 +1979,14 @@ let planMatrix  = null;        // { key, ids: stop keys, m: miles[from][to], app
 let planDrivers = { am: [], pm: [] };
 let planMap = null, planLayer = null;
 let planOpen    = new Set();   // stop keys whose items are expanded
+// Which kind of stop the list and map show: 'all', 'd' or 'p' (28 Oct 2026).
+// Remembered on this browser; the van panel always shows the whole trip.
+let planKind = (() => { try { return localStorage.getItem('planKind') || 'all'; } catch (e) { return 'all'; } })();
+function setPlanKind(kind) {
+  planKind = kind;
+  try { localStorage.setItem('planKind', kind); } catch (e) { /* private mode: just this visit */ }
+  renderPlanner();
+}
 
 // The planner plans STOPS (28 Oct 2026): a delivery, which is a referral, or a
 // pickup. key is 'd' + referral id or 'p' + pickup id, so the two never
@@ -2377,13 +2386,17 @@ function renderPlanner() {
   // into an EMPTY van it is never greyed out. Once the van has something in
   // it, it greys out like anything else that would overfill it at its fullest,
   // in the best order it could go in. Every row stays clickable either way.
-  const rows = stops.filter(s => !van.includes(s)).map(s => {
+  const waiting = stops.filter(s => !van.includes(s));
+  const count = k => waiting.filter(s => k === 'all' || s.kind === k).length;
+  const kindPill = (k, label) => `<button class="pill${planKind === k ? ' active' : ''}" onclick="setPlanKind('${k}')">${label} (${count(k)})</button>`;
+  const rows = waiting.filter(s => planKind === 'all' || s.kind === planKind).map(s => {
     const withIt = bestRoute([...vanStops, planIdx(s.key)], m, delta, VAN_CAPACITY);
     const big = isBigOrder(s);
     return { s, extra: withIt.miles - route.miles, big, fits: (big && !van.length) || !withIt.over };
   }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
 
   document.getElementById('plan-list').innerHTML = `
+    <div class="filter-row plan-kinds">${kindPill('all', 'All')}${kindPill('d', 'Deliveries')}${kindPill('p', 'Pickups')}</div>
     <div class="plan-list-head plan-row-top">
       <span class="plan-row-who">Delivery or pickup</span>
       <div class="plan-row-nums">
@@ -2408,7 +2421,7 @@ function renderPlanner() {
           ${planTags(s)}
         </div>
         ${planOpen.has(s.key) ? planItemsHtml(s) : ''}
-      </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery and pickup is in this van.</div>'}`;
+      </div>`).join('') || `<div class="plan-muted" style="padding:12px">${count('all') ? 'Nothing of this kind waiting.' : 'Every open delivery and pickup is in this van.'}</div>`}`;
 
   renderPlanMap(stops, van, route);
 }
@@ -2455,6 +2468,7 @@ function renderPlanMap(stops, van, route) {
   planMarkers = {};
   for (const s of stops) {
     const inVan = van.includes(s);
+    if (!inVan && planKind !== 'all' && s.kind !== planKind) continue;   // the map matches the list
     const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')} · ${planPtsText(s)}`;
     let m, style;
     if (s.kind === 'p') {
