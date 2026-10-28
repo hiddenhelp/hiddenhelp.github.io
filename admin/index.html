@@ -2051,7 +2051,6 @@ const planRef = s => s.kind === 'd' ? '#' + s.r.referral_number : 'P' + s.p.code
 const planRefLink = s => `${s.kind === 'p' ? '<span class="tag tag-pickup">Pickup</span> ' : ''}<button class="dup-link" onclick="event.stopPropagation(); openFromPlanner('${s.key}')" title="Open the ${s.kind === 'd' ? 'referral' : 'pickup'}">${planRef(s)}</button>`;
 const planItemsBtn = s => `<button class="plan-items-btn${planOpen.has(s.key) ? ' active' : ''}" onclick="event.stopPropagation(); togglePlanItems('${s.key}')">${ICONS.list}<span>Items</span></button>`;
 // Signed: what the stop does to the van.
-const planPtsText = s => `${s.kind === 'p' ? '+' : ''}${Math.round(s.pts)} pts`;
 
 function loadKey(s) {          // order.mjs normName: what the Unit A list matches on
   return String(s ?? '').replace(/['’‘"]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -2203,25 +2202,28 @@ const planIdx = key => planMatrix.ids.indexOf(key) + 1;
 // Shortest round trip from base through the stops, by trying every order, that
 // never has more than cap points aboard. delta[i] is what stop i does to the
 // load: a delivery takes its points off, a pickup puts them on, and the van
-// leaves base with every delivery aboard (28 Oct 2026). So drops usually come
-// first, but a pickup can go early when there is room and it saves miles.
+// leaves base with every delivery aboard (28 Oct 2026).
 // When no order fits, the shortest order regardless, marked over; peak is the
 // most aboard at any point of the chosen order.
 // ponytail: exhaustive, fine to 7 stops (5040 orders); a van never makes more.
-function bestRoute(stops, m, delta = {}, cap = Infinity) {
+// `late` holds stops that must wait until every other stop is done: pickups
+// go after the deliveries, so the crew drops first (Richard, 28 Oct 2026).
+function bestRoute(stops, m, delta = {}, cap = Infinity, late = new Set()) {
   if (!stops.length) return { miles: 0, order: [], peak: 0 };
   const start = stops.reduce((t, s) => t + Math.max(0, -(delta[s] || 0)), 0);
   let best = null;
   const walk = (rest, path, d, now, peak) => {
     if (best && d >= best.miles) return;
     if (!rest.length) { const t = d + m[path[path.length - 1]][0]; if (!best || t < best.miles) best = { miles: t, order: path, peak }; return; }
+    const early = rest.some(s => !late.has(s));
     rest.forEach((s, i) => {
+      if (early && late.has(s)) return;
       const n = now + (delta[s] || 0);
       if (n <= cap) walk(rest.filter((_, j) => j !== i), [...path, s], d + m[path.length ? path[path.length - 1] : 0][s], n, Math.max(peak, n));
     });
   };
   if (start <= cap) walk(stops, [], 0, start, start);
-  return best || { ...bestRoute(stops, m, delta), over: true };
+  return best || { ...bestRoute(stops, m, delta, Infinity, late), over: true };
 }
 const separateMiles = (stops, m) => stops.reduce((t, s) => t + m[0][s] + m[s][0], 0);
 
@@ -2265,7 +2267,7 @@ async function openPlanner() {
   if (!el.querySelector('#plan-map')) {
     el.innerHTML = `
       <div class="vol-view-header avail-header">
-        <div style="flex:1"><h2>Delivery Planner</h2><div class="plan-sub">Van capacity = ${VAN_CAPACITY} pts · deliveries and pickups</div></div>
+        <div style="flex:1"><h2>Delivery Planner</h2><div class="plan-sub">Deliveries first, then pickups</div></div>
         <label class="avail-week">Day <input type="date" class="vol-input plan-day" id="plan-day" onchange="setPlanDay(this.value)"></label>
       </div>
       <div class="plan-grid">
@@ -2340,15 +2342,12 @@ function renderPlanner() {
   const van = planVan(stops);
   const vanStops = van.map(s => planIdx(s.key));
   const delta = Object.fromEntries(stops.map(s => [planIdx(s.key), s.kind === 'd' ? -s.pts : s.pts]));
-  const route = bestRoute(vanStops, m, delta, VAN_CAPACITY);
-  const leaves = van.filter(s => s.kind === 'd').reduce((t, s) => t + s.pts, 0);
-  const back = van.filter(s => s.kind === 'p').reduce((t, s) => t + s.pts, 0);
-  const picks = back > 0 || van.some(s => s.kind === 'p');
+  const late = new Set(stops.filter(s => s.kind === 'p').map(s => planIdx(s.key)));
+  const route = bestRoute(vanStops, m, delta, VAN_CAPACITY, late);
   const peak = van.length ? route.peak : 0;
   const approx = planMatrix.approx ? ' (approx.)' : '';
   const pct = Math.min(100, Math.round(100 * peak / VAN_CAPACITY));
   const unbooked = van.filter(s => planAdded.has(s.key)).length;
-  let aboard = leaves;
 
   document.getElementById('plan-van').innerHTML = `
     <div class="plan-panel">
@@ -2356,14 +2355,12 @@ function renderPlanner() {
       <div class="plan-drivers">Drivers free: AM ${esc(planDrivers.am.join(', ') || 'none recorded')} · PM ${esc(planDrivers.pm.join(', ') || 'none recorded')}</div>
       <div class="plan-load ${peak > VAN_CAPACITY ? 'over' : ''}">
         <div class="plan-load-bar"><span style="width:${pct}%"></span></div>
-        <div>${picks ? 'Fullest ' : ''}${Math.round(peak)} of ${VAN_CAPACITY} points${peak > VAN_CAPACITY
-          ? (van.some(isBigOrder) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}${picks
-          ? ` <span class="plan-muted">· leaves base with ${Math.round(leaves)}, back with ${Math.round(back)}</span>` : ''}</div>
+        ${peak > VAN_CAPACITY ? `<div>${van.some(isBigOrder) ? 'Too much for one van, but it includes a big order: check what was gathered' : 'Too much for one van'}</div>` : ''}
       </div>
       ${van.length ? `
-        <ol class="plan-stops">${route.order.map(i => { const s = van.find(x => planIdx(x.key) === i); aboard += delta[i]; return `
-          <li><b>${planRefLink(s)}</b> ${esc(planName(s))} <span class="plan-muted">${esc(planTown(s))} ·</span> <span class="${isBigOrder(s) ? 'plan-big' : 'plan-muted'}"${isBigOrder(s) ? ` title="${bigTitle}"` : ''}>${planPtsText(s)}</span>${picks
-            ? ` <span class="plan-muted">→ ${Math.round(aboard)} in van</span>` : ''}
+        <ol class="plan-stops">${route.order.map(i => { const s = van.find(x => planIdx(x.key) === i); return `
+          <li><b>${planRefLink(s)}</b> ${esc(planName(s))} <span class="plan-muted">${esc(planTown(s))}</span>${isBigOrder(s)
+            ? ` <span class="plan-big" title="${bigTitle}">Big order</span>` : ''}
             <div class="plan-stop-actions">
             ${planTags(s)}
             ${planAdded.has(s.key) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
@@ -2390,7 +2387,7 @@ function renderPlanner() {
   const count = k => waiting.filter(s => k === 'all' || s.kind === k).length;
   const kindPill = (k, label) => `<button class="pill${planKind === k ? ' active' : ''}" onclick="setPlanKind('${k}')">${label} (${count(k)})</button>`;
   const rows = waiting.filter(s => planKind === 'all' || s.kind === planKind).map(s => {
-    const withIt = bestRoute([...vanStops, planIdx(s.key)], m, delta, VAN_CAPACITY);
+    const withIt = bestRoute([...vanStops, planIdx(s.key)], m, delta, VAN_CAPACITY, late);
     const big = isBigOrder(s);
     return { s, extra: withIt.miles - route.miles, big, fits: (big && !van.length) || !withIt.over };
   }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
@@ -2401,7 +2398,7 @@ function renderPlanner() {
       <span class="plan-row-who">Delivery or pickup</span>
       <div class="plan-row-nums">
         <span class="plan-col-miles">${van.length ? 'Extra miles if added' : 'Round trip from base'}${approx}</span>
-        <span class="plan-col-load">Load size</span>
+        <span class="plan-col-load"></span>
         <span class="plan-col-actions"></span>
       </div>
     </div>
@@ -2412,7 +2409,7 @@ function renderPlanner() {
           <div class="plan-row-who"><b>${planRefLink(s)}</b> ${esc(planName(s))} <span class="plan-muted" style="white-space:nowrap">${esc(planTown(s))}</span></div>
           <div class="plan-row-nums">
             <span class="plan-col-miles">${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${planPtsText(s)}${fits ? '' : " · won't fit"}</span></span>
+            <span class="plan-col-load ${fits ? '' : 'plan-over'}">${big ? `<span class="plan-big" title="${bigTitle}">Big order</span>` : ''}${fits ? '' : "<span>Won't fit</span>"}</span>
             <span class="plan-col-actions">${planItemsBtn(s)}${planDateCell(s)}</span>
           </div>
         </div>
@@ -2469,7 +2466,7 @@ function renderPlanMap(stops, van, route) {
   for (const s of stops) {
     const inVan = van.includes(s);
     if (!inVan && planKind !== 'all' && s.kind !== planKind) continue;   // the map matches the list
-    const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')} · ${planPtsText(s)}`;
+    const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')}`;
     let m, style;
     if (s.kind === 'p') {
       style = { col: inVan ? colour('--blue') : colour('--purple'), size: inVan ? 16 : 12 };
