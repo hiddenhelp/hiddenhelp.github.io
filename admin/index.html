@@ -2198,6 +2198,7 @@ async function planLoadMatrix(stops) {
     planMatrix = { key, ids, m: pts.map(a => pts.map(b => 1.3 * haversineMiles(a, b))), approx: true };
   }
 }
+const planPtsText = s => `${s.kind === 'p' ? '+' : ''}${Math.round(s.pts)} pts`;
 const planIdx = key => planMatrix.ids.indexOf(key) + 1;
 
 // Shortest round trip from base through the stops, by trying every order, that
@@ -2399,7 +2400,7 @@ function renderPlanner() {
       <span class="plan-row-who">Delivery or pickup</span>
       <div class="plan-row-nums">
         <span class="plan-col-miles">${van.length ? 'Extra miles if added' : 'Round trip from base'}${approx}</span>
-        <span class="plan-col-load"></span>
+        <span class="plan-col-load">Load size</span>
         <span class="plan-col-actions"></span>
       </div>
     </div>
@@ -2410,7 +2411,7 @@ function renderPlanner() {
           <div class="plan-row-who"><b>${planRefLink(s)}</b> ${esc(planName(s))} <span class="plan-muted" style="white-space:nowrap">${esc(planTown(s))}</span></div>
           <div class="plan-row-nums">
             <span class="plan-col-miles">${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-            <span class="plan-col-load ${fits ? '' : 'plan-over'}">${big ? `<span class="plan-big" title="${bigTitle}">Big order</span>` : ''}${fits ? '' : "<span>Won't fit</span>"}</span>
+            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${planPtsText(s)}${fits ? '' : " · won't fit"}</span></span>
             <span class="plan-col-actions">${planItemsBtn(s)}${planDateCell(s)}</span>
           </div>
         </div>
@@ -2467,7 +2468,7 @@ function renderPlanMap(stops, van, route) {
   for (const s of stops) {
     const inVan = van.includes(s);
     if (!inVan && planKind !== 'all' && s.kind !== planKind) continue;   // the map matches the list
-    const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')}`;
+    const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')} · ${planPtsText(s)}`;
     let m, style;
     if (s.kind === 'p') {
       style = { col: inVan ? colour('--blue') : colour('--purple'), size: inVan ? 16 : 12 };
