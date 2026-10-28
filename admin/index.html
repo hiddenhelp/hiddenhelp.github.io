@@ -916,6 +916,8 @@ a { color: inherit; text-decoration: none; }
 .plan-items-btn { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--text2); padding: 2px 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
 .plan-items-btn.active { background: var(--bg2); }
 .plan-over { color: var(--red); }
+.tag-pickup { background: var(--purple-bg); color: var(--purple); }
+.plan-diamond { box-sizing: border-box; transform: rotate(45deg); border: 2px solid; }
 .plan-date { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
 .plan-day { width: auto; max-width: 160px; display: inline-block; margin-left: 6px; }
 @media (max-width: 800px) {
@@ -1384,12 +1386,17 @@ const PK_TAG = { draft: '<span class="tag tag-wishlist">Draft</span>',
                  posted: '<span class="tag tag-completed">Posted</span>',
                  changed: '<span class="tag tag-cancelled">Changed, not reposted</span>' };
 
+// The Planner reads them too, so it fetches without rendering this tab.
+async function fetchPickups() {
+  const { data, error } = await db.from('pickups').select('*').order('code');
+  if (!error) allPickups = data || [];
+  return error;
+}
 async function loadPickups() {
   const el = document.getElementById('pickups-view');
   if (!allPickups.length) el.innerHTML = '<div class="loading">Loading pickups…</div>';
-  const { data, error } = await db.from('pickups').select('*').order('code');
+  const error = await fetchPickups();
   if (error) { el.innerHTML = `<div class="loading">Failed to load: ${esc(error.message)}</div>`; return; }
-  allPickups = data || [];
   if (pkSel?.id) {
     const fresh = allPickups.find(x => x.id === pkSel.id);
     pkSel = fresh ? { ...fresh } : null;
@@ -1424,7 +1431,7 @@ function renderPickups() {
   const rows = allPickups.map(p => `
     <div class="pk-row${pkSel?.id === p.id ? ' sel' : ''}" onclick="pkOpen(${p.id})">
       <span class="pk-code">P${p.code}</span>
-      <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc(p.donor_name || '')}</span></span>
+      <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc(p.donor_name || '')}${p.scheduled_date ? ` · booked ${fmtDay(p.scheduled_date)}` : ''}</span></span>
       ${PK_TAG[pkState(p)]}
     </div>`).join('');
   el.innerHTML = `
@@ -1452,7 +1459,7 @@ function pkForm(p) {
   return `<div class="card">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">${code}</div>
     <div class="vol-edit-grid" style="max-width:none">
-      <div style="grid-column:1/-1">${field('Donation items', 'items')}</div>
+      <div style="grid-column:1/-1">${field('Donation items', 'items')}<div class="vol-hint plan-items-big" id="pk-load"></div></div>
       ${field('Donor name', 'donor_name')}
       <div class="vol-field"><label>Donor phone</label><input class="vol-input" inputmode="tel" value="${esc(p.donor_phone || '')}" oninput="pkSet('donor_phone', this.value); pkPhoneWarn(false)" onblur="pkPhoneWarn(true)"><div id="pk-phone-warn">${phoneWarn(normalisePhone(p.donor_phone))}</div></div>
       <div class="vol-field" style="grid-column:1/-1"><label>Donor address</label>
@@ -1498,6 +1505,10 @@ function pkRefresh() {
       <input class="vol-input" id="pk-pin" placeholder="50.21310, -5.29890" style="flex:1">
       <button class="btn" onclick="pkPin()">Use this pin</button>
     </div>`;
+  // The planner's load estimate, so the wording can be fixed while typing.
+  const est = pickupLoad(p.items);
+  document.getElementById('pk-load').innerHTML = p.items?.trim()
+    ? `<span>About <b>${fmtPts(est.pts)} pts</b> in the van:</span>${pickupLoadHtml(est)}` : '';
   document.getElementById('pk-preview').innerHTML =
     p.items?.trim() ? pickupMessage(pkRow(p)) : '<span class="pk-sub">Enter the donation items</span>';
 
@@ -1962,47 +1973,76 @@ const VAN_CAPACITY = 80;
 const HQ = [50.25854, -5.19544];   // hh_utils.py HQ_LAT / HQ_LON
 
 let planDay     = null;        // 'YYYY-MM-DD' being planned
-let planAdded   = new Set();   // referral ids put in the van, not yet booked
-let planMatrix  = null;        // { key, ids, m: miles[from][to], approx }, index 0 = HQ
+let planAdded   = new Set();   // stop keys put in the van, not yet booked
+let planMatrix  = null;        // { key, ids: stop keys, m: miles[from][to], approx }, index 0 = HQ
 let planDrivers = { am: [], pm: [] };
 let planMap = null, planLayer = null;
-let planOpen    = new Set();   // referral ids whose wishlist is expanded
+let planOpen    = new Set();   // stop keys whose items are expanded
 
-function togglePlanItems(id) {
-  if (planOpen.has(id)) planOpen.delete(id); else planOpen.add(id);
+// The planner plans STOPS (28 Oct 2026): a delivery, which is a referral, or a
+// pickup. key is 'd' + referral id or 'p' + pickup id, so the two never
+// collide; r or p is the row itself. A delivery takes its points out of the
+// van, a pickup brings them back.
+function planStops() {
+  return [
+    ...planCandidates().map(r => ({ key: 'd' + r.id, kind: 'd', r, date: r.scheduled_date,
+      lat: Number(r.clients.latitude), lon: Number(r.clients.longitude), pts: planLoad(r) })),
+    ...allPickups.filter(p => p.lat != null && p.lon != null).map(p => ({ key: 'p' + p.id, kind: 'p', p,
+      date: p.scheduled_date, lat: Number(p.lat), lon: Number(p.lon), pts: pickupLoad(p.items).pts })),
+  ];
+}
+const planStop = key => planStops().find(s => s.key === key);
+
+function togglePlanItems(key) {
+  if (planOpen.has(key)) planOpen.delete(key); else planOpen.add(key);
   renderPlanner();
 }
 
-// To the referral's own card. The Planner button comes back to the same van.
-function openFromPlanner(id) {
+// To the referral's own card, or the pickup on its own tab. The Planner
+// button comes back to the same van.
+function openFromPlanner(key) {
+  const s = planStop(key);
+  if (s.kind === 'p') { setView('pickups'); pkOpen(s.p.id); return; }
   setView('referrals');
-  selectReferral(allReferrals.find(x => x.id === id));
+  selectReferral(s.r);
 }
 
-// The wishlist, editable: the same editor as the referral card, showing each
-// line's points. Clicks inside must not reach the row, which toggles the van.
-function planItemsHtml(r) {
-  return `<div class="plan-items" onclick="event.stopPropagation()">${wishlistEditorHtml(r, { editing: true, points: true })}</div>`;
+// A delivery's wishlist, editable: the same editor as the referral card,
+// showing each line's points. A pickup's items are what was posted, read-only
+// with the estimate under them; they are changed on the Pickups tab, which
+// reposts. Clicks inside must not reach the row, which toggles the van.
+function planItemsHtml(s) {
+  if (s.kind === 'd')
+    return `<div class="plan-items" onclick="event.stopPropagation()">${wishlistEditorHtml(s.r, { editing: true, points: true })}</div>`;
+  const est = pickupLoad(s.p.items);
+  return `<div class="plan-items" onclick="event.stopPropagation()">
+    <div class="plan-items-head">Items, as posted</div><div>${esc(s.p.items)}</div>
+    <div class="plan-items-head">Load estimate · ${fmtPts(est.pts)} pts</div>
+    <div class="plan-items-big">${pickupLoadHtml(est)}</div>
+    <div class="plan-muted">Change the wording on the Pickups tab to change the estimate.</div></div>`;
 }
 // An empty <input type="date"> in Safari shows TODAY in grey, which read as
 // "booked for today" on every row. So an unbooked row gets a button, and the
 // date box only appears once there is a date or the button is pressed.
 let planDateEditing = null;
-function planDateCell(r) {
-  if (!r.scheduled_date && planDateEditing !== r.id)
-    return `<button class="plan-items-btn" onclick="event.stopPropagation(); planEditDate(${r.id})">Set date</button>`;
-  return `<input type="date" class="plan-date" id="plan-date-${r.id}" value="${r.scheduled_date || ''}" title="Booked date: change or clear"
-    onclick="event.stopPropagation()" onchange="planDateEditing = null; setPlanDate(${r.id}, this.value)"
-    onblur="if (!this.value && planDateEditing === ${r.id}) { planDateEditing = null; renderPlanner(); }">`;
+function planDateCell(s) {
+  if (!s.date && planDateEditing !== s.key)
+    return `<button class="plan-items-btn" onclick="event.stopPropagation(); planEditDate('${s.key}')">Set date</button>`;
+  return `<input type="date" class="plan-date" id="plan-date-${s.key}" value="${s.date || ''}" title="Booked date: change or clear"
+    onclick="event.stopPropagation()" onchange="planDateEditing = null; setPlanDate('${s.key}', this.value)"
+    onblur="if (!this.value && planDateEditing === '${s.key}') { planDateEditing = null; renderPlanner(); }">`;
 }
-function planEditDate(id) {
-  planDateEditing = id;
+function planEditDate(key) {
+  planDateEditing = key;
   renderPlanner();
-  const el = document.getElementById('plan-date-' + id);
+  const el = document.getElementById('plan-date-' + key);
   if (el) { el.focus(); try { el.showPicker(); } catch (e) { /* not supported: the focused box is enough */ } }
 }
-const planRefLink = r => `<button class="dup-link" onclick="event.stopPropagation(); openFromPlanner(${r.id})" title="Open the referral">#${r.referral_number}</button>`;
-const planItemsBtn = r => `<button class="plan-items-btn${planOpen.has(r.id) ? ' active' : ''}" onclick="event.stopPropagation(); togglePlanItems(${r.id})">${ICONS.list}<span>Items</span></button>`;
+const planRef = s => s.kind === 'd' ? '#' + s.r.referral_number : 'P' + s.p.code;
+const planRefLink = s => `${s.kind === 'p' ? '<span class="tag tag-pickup">Pickup</span> ' : ''}<button class="dup-link" onclick="event.stopPropagation(); openFromPlanner('${s.key}')" title="Open the ${s.kind === 'd' ? 'referral' : 'pickup'}">${planRef(s)}</button>`;
+const planItemsBtn = s => `<button class="plan-items-btn${planOpen.has(s.key) ? ' active' : ''}" onclick="event.stopPropagation(); togglePlanItems('${s.key}')">${ICONS.list}<span>Items</span></button>`;
+// Signed: what the stop does to the van.
+const planPtsText = s => `${s.kind === 'p' ? '+' : ''}${Math.round(s.pts)} pts`;
 
 function loadKey(s) {          // order.mjs normName: what the Unit A list matches on
   return String(s ?? '').replace(/['’‘"]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -2040,7 +2080,81 @@ function loadPrompts(r) {
 }
 const planPromptTags = r => loadPrompts(r).map(p => `<span class="tag tag-wishlist plan-prompt">${esc(p.text)}
   <button onclick="event.stopPropagation(); ${p.fix}">${p.fixLabel}</button></span>`).join('');
-const isBigOrder = r => planLoad(r) > VAN_CAPACITY;
+
+// A pickup has no wishlist, only what was typed: "x2 chests of drawers; TV".
+// pickupLoad reads that onto the same points table (28 Oct 2026). The text is
+// split on ; , & and "and"; a count comes from "x2", "2x" or a leading "2";
+// the first pattern below that matches names the item. A size said once
+// carries on ("double divan & mattress" is a double mattress), and an unsized
+// bed is a double, pessimistic like the rest of the table. What nothing
+// matches counts as one box and is listed, so the wording can be fixed.
+// Patterns are tried in order: "tv cabinet" before "cabinet" and "tv",
+// "desk chair" before "desk" and "chair", "sofa bed" and "bunk bed" before "bed".
+const PICKUP_EXTRA = {   // pickup-only items, not on the wishlist form; guesses
+  'sofa': 10, 'wardrobe': 6, 'cupboard': 4, 'washing machine': 4, 'cooker': 4, 'small item': 0.5,
+};
+const PICKUP_WORDS = [
+  [/bunk/,                                'bunk bed'],
+  [/sofa|settee|couch|suite/,             'sofa'],
+  [/divan|bed ?(frame|base)s?|\bbeds?\b/, sz => sz + ' bed base'],
+  [/mattress/,                            sz => sz + ' mattress'],
+  [/arm ?chair/,                          'arm chair'],
+  [/drawers/,                             'chest of drawers'],
+  [/tv (cabinet|table|stand|unit)/,       'tv stand'],
+  [/bedside/,                             'bedside table'],
+  [/coffee table/,                        'coffee table'],
+  [/side table|lamp table|nest of tables/, 'side table'],
+  [/dressing table/,                      'dressing tables'],
+  [/desk chair|office chair/,             'desk chair'],
+  [/\bdesk/,                              'desk'],
+  [/table/,                               'dining table'],
+  [/sideboard/,                           'sideboard'],
+  [/wardrobe/,                            'wardrobe'],
+  [/shelv|bookcase|book case/,            'shelving unit'],
+  [/cupboard|cabinet/,                    'cupboard'],
+  [/fridge ?freezer/,                     'fridge freezer'],
+  [/freezer/,                             'freezer'],
+  [/fridge/,                              'fridge'],
+  [/washing machine|washer|dryer|dishwasher/, 'washing machine'],
+  [/cooker|oven/,                         'cooker'],
+  [/stool/,                               'small stool'],
+  [/chair/,                               'dining chair'],
+  [/\btv\b|television/,                   'tv large'],
+  [/microwave/,                           'microwave'],
+  [/mirror/,                              'mirror'],
+  [/lamp/,                                'floor lamp'],
+  [/heater/,                              'portable heater (electric)'],
+  [/\brugs?\b/,                           'rug large'],
+  [/vacuum|hoover/,                       'vacuum'],
+  [/ironing board|\birons?\b|kettle|toaster|airer/, 'small item'],
+];
+// → { pts, parts: [{ text, q, key, each, known }] }
+function pickupLoad(text) {
+  const parts = [];
+  let size = 'double';
+  for (let part of String(text ?? '').toLowerCase().split(/[;,&\n]|\band\b/)) {
+    part = part.trim();
+    if (!part) continue;
+    let q = 1;
+    const m = part.match(/^x\s*(\d+)\s+|^(\d+)\s*x?\s+(?!seat)|\s+x\s*(\d+)$/);   // not "3 seater"
+    if (m) { q = +(m[1] || m[2] || m[3]); part = part.replace(m[0], ' ').trim(); }
+    const said = part.match(/\b(single|double|king|kingsize|king size|super ?king)\b/);
+    if (said) size = said[1] === 'single' ? 'single' : 'double';
+    const hit = PICKUP_WORDS.find(([re]) => re.test(part));
+    const key = hit && (typeof hit[1] === 'function' ? hit[1](size) : hit[1]);
+    const each = key ? (LOAD_POINTS[key] ?? PICKUP_EXTRA[key]) : 1;
+    parts.push({ text: part, q, key, each, known: !!key });
+  }
+  return { pts: parts.reduce((t, x) => t + x.q * x.each, 0), parts };
+}
+const fmtPts = n => String(Math.round(n * 10) / 10);
+// The breakdown, as the planner's Items panel and the Pickups form show it.
+function pickupLoadHtml(est) {
+  const known = est.parts.filter(x => x.known), odd = est.parts.filter(x => !x.known);
+  return known.map(x => `<span>${x.q > 1 ? x.q + ' × ' : ''}${esc(x.key)} <b>${fmtPts(x.q * x.each)}</b></span>`).join('')
+    + (odd.length ? `<span style="color:var(--amber)">${esc(odd.map(x => (x.q > 1 ? x.q + ' × ' : '') + x.text).join(', '))}: not recognised, 1 each</span>` : '');
+}
+const isBigOrder = s => s.pts > VAN_CAPACITY;
 const bigTitle = 'Big order: over a van as the list stands. Trim it in Items for what is in stock';
 // Open deliveries with a wishlist in, gathered or not, that have a map location.
 function planCandidates() {
@@ -2056,14 +2170,14 @@ function haversineMiles([la1, lo1], [la2, lo2]) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// Road miles between every pair, from the same OSRM table service the pickup
-// suggestions use. One call for all ~15 deliveries. If it fails, straight-line
+// Road miles between every pair of stops, from the same OSRM table service the
+// pickup suggestions use. One call for all of them. If it fails, straight-line
 // miles x1.3 stand in and the panel says the figures are approximate.
-async function planLoadMatrix(cands) {
-  const key = cands.map(r => r.id).join(',');
+async function planLoadMatrix(stops) {
+  const key = stops.map(s => s.key).join(',');
   if (planMatrix?.key === key) return;
-  const ids = cands.map(r => r.id);
-  const pts = [HQ, ...cands.map(r => [Number(r.clients.latitude), Number(r.clients.longitude)])];
+  const ids = stops.map(s => s.key);
+  const pts = [HQ, ...stops.map(s => [s.lat, s.lon])];
   try {
     const coords = pts.map(([la, lo]) => `${lo},${la}`).join(';');
     const res = await fetch(`https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`);
@@ -2075,25 +2189,35 @@ async function planLoadMatrix(cands) {
     planMatrix = { key, ids, m: pts.map(a => pts.map(b => 1.3 * haversineMiles(a, b))), approx: true };
   }
 }
-const planIdx = id => planMatrix.ids.indexOf(id) + 1;
+const planIdx = key => planMatrix.ids.indexOf(key) + 1;
 
-// Shortest round trip from base through the stops, by trying every order.
-// ponytail: exhaustive, fine to 7 drops (5040 orders); a van never carries that many.
-function bestRoute(stops, m) {
-  if (!stops.length) return { miles: 0, order: [] };
+// Shortest round trip from base through the stops, by trying every order, that
+// never has more than cap points aboard. delta[i] is what stop i does to the
+// load: a delivery takes its points off, a pickup puts them on, and the van
+// leaves base with every delivery aboard (28 Oct 2026). So drops usually come
+// first, but a pickup can go early when there is room and it saves miles.
+// When no order fits, the shortest order regardless, marked over; peak is the
+// most aboard at any point of the chosen order.
+// ponytail: exhaustive, fine to 7 stops (5040 orders); a van never makes more.
+function bestRoute(stops, m, delta = {}, cap = Infinity) {
+  if (!stops.length) return { miles: 0, order: [], peak: 0 };
+  const start = stops.reduce((t, s) => t + Math.max(0, -(delta[s] || 0)), 0);
   let best = null;
-  const walk = (rest, path, d) => {
+  const walk = (rest, path, d, now, peak) => {
     if (best && d >= best.miles) return;
-    if (!rest.length) { const t = d + m[path[path.length - 1]][0]; if (!best || t < best.miles) best = { miles: t, order: path }; return; }
-    rest.forEach((s, i) => walk(rest.filter((_, j) => j !== i), [...path, s], d + m[path.length ? path[path.length - 1] : 0][s]));
+    if (!rest.length) { const t = d + m[path[path.length - 1]][0]; if (!best || t < best.miles) best = { miles: t, order: path, peak }; return; }
+    rest.forEach((s, i) => {
+      const n = now + (delta[s] || 0);
+      if (n <= cap) walk(rest.filter((_, j) => j !== i), [...path, s], d + m[path.length ? path[path.length - 1] : 0][s], n, Math.max(peak, n));
+    });
   };
-  walk(stops, [], 0);
-  return best;
+  if (start <= cap) walk(stops, [], 0, start, start);
+  return best || { ...bestRoute(stops, m, delta), over: true };
 }
 const separateMiles = (stops, m) => stops.reduce((t, s) => t + m[0][s] + m[s][0], 0);
 
-function planVan() {
-  return planCandidates().filter(r => r.scheduled_date === planDay || planAdded.has(r.id));
+function planVan(stops = planStops()) {
+  return stops.filter(s => s.date === planDay || planAdded.has(s.key));
 }
 
 // Things a crew needs to know before they agree to a pairing.
@@ -2103,6 +2227,21 @@ function planFlags(r) {
   const notes = [r.referrer_notes, r.client_notes, r.wishlist_note].filter(Boolean).join(' ');
   if (/stair|steps|flight|floor|no lift|narrow|parking/i.test(notes)) f.push('Access notes');
   return f;
+}
+// A delivery's tags; a pickup's are its notes ("Collection Mon-Thurs 9-5"),
+// without the **bold** markers the post uses.
+function planTags(s) {
+  if (s.kind === 'p') {
+    const n = String(s.p.notes || '').replace(/\*\*|__/g, '').trim();
+    return n ? `<span class="tag tag-rejected" title="${esc(n)}">${esc(n.length > 80 ? n.slice(0, 79) + '…' : n)}</span>` : '';
+  }
+  return planPromptTags(s.r) + planFlags(s.r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('');
+}
+const planName = s => s.kind === 'd' ? [s.r.clients?.first_name, s.r.clients?.last_name].filter(Boolean).join(' ') : (s.p.donor_name || '');
+function planTown(s) {
+  if (s.kind === 'd') return [postTown(s.r.clients), (s.r.clients?.postcode || '').toUpperCase()].filter(Boolean).join(', ');
+  const pcs = String(s.p.address || s.p.geocoded_address || '').toUpperCase().match(/[A-Z]{1,2}[0-9][0-9A-Z]?\s*[0-9][A-Z]{2}/g);
+  return [postTown(s.p), pcs ? pcs[pcs.length - 1] : ''].filter(Boolean).join(', ');
 }
 
 function nextWorkingDay(today = new Date()) {
@@ -2117,7 +2256,7 @@ async function openPlanner() {
   if (!el.querySelector('#plan-map')) {
     el.innerHTML = `
       <div class="vol-view-header avail-header">
-        <div style="flex:1"><h2>Delivery Planner</h2><div class="plan-sub">Van capacity = ${VAN_CAPACITY} pts</div></div>
+        <div style="flex:1"><h2>Delivery Planner</h2><div class="plan-sub">Van capacity = ${VAN_CAPACITY} pts · deliveries and pickups</div></div>
         <label class="avail-week">Day <input type="date" class="vol-input plan-day" id="plan-day" onchange="setPlanDay(this.value)"></label>
       </div>
       <div class="plan-grid">
@@ -2126,7 +2265,8 @@ async function openPlanner() {
       </div>`;
   }
   document.getElementById('plan-day').value = planDay;
-  await Promise.all([planLoadMatrix(planCandidates()), planLoadDrivers(), planEnsureLeaflet()]);
+  await fetchPickups();
+  await Promise.all([planLoadMatrix(planStops()), planLoadDrivers(), planEnsureLeaflet()]);
   renderPlanner();
 }
 
@@ -2148,74 +2288,84 @@ async function planLoadDrivers() {
   planDrivers.am.sort(); planDrivers.pm.sort();
 }
 
-function togglePlan(id) {
-  const r = allReferrals.find(x => x.id === id);
-  if (r.scheduled_date === planDay) {
-    if (confirm(`Unbook #${r.referral_number} from ${fmtDay(planDay)}?`)) setPlanDate(id, null);
+function togglePlan(key) {
+  const s = planStop(key);
+  if (s.date === planDay) {
+    if (confirm(`Unbook ${planRef(s)} from ${fmtDay(planDay)}?`)) setPlanDate(key, null);
     return;
   }
-  if (planAdded.has(id)) planAdded.delete(id); else planAdded.add(id);
+  if (planAdded.has(key)) planAdded.delete(key); else planAdded.add(key);
   renderPlanner();
 }
 
-// The one write the planner makes: referrals.scheduled_date, which the
-// referral's own card already shows as "Scheduled". Editable from any row.
-async function setPlanDate(id, day) {
-  const { error } = await db.from('referrals').update({ scheduled_date: day || null }).eq('id', id);
+// The one write the planner makes: scheduled_date on the referral, which its
+// card shows as "Scheduled", or on the pickup. Editable from any row.
+const PLAN_TABLE = { d: 'referrals', p: 'pickups' };
+async function setPlanDate(key, day) {
+  const s = planStop(key), row = s.r || s.p;
+  const { error } = await db.from(PLAN_TABLE[s.kind]).update({ scheduled_date: day || null }).eq('id', row.id);
   if (error) { alert('Save failed: ' + error.message); renderPlanner(); return; }
-  const r = allReferrals.find(x => x.id === id);
-  r.scheduled_date = day || null;
-  planAdded.delete(id);
+  row.scheduled_date = day || null;
+  planAdded.delete(key);
   renderPlanner();
 }
 
 async function bookPlan() {
-  const ids = [...planAdded];
-  const { error } = await db.from('referrals').update({ scheduled_date: planDay }).in('id', ids);
-  if (error) { alert('Booking failed: ' + error.message); return; }
-  for (const r of allReferrals) if (ids.includes(r.id)) r.scheduled_date = planDay;
-  planAdded.clear();
+  for (const [kind, rows] of [['d', allReferrals], ['p', allPickups]]) {
+    const keys = [...planAdded].filter(k => k[0] === kind), ids = keys.map(k => +k.slice(1));
+    if (!ids.length) continue;
+    const { error } = await db.from(PLAN_TABLE[kind]).update({ scheduled_date: planDay }).in('id', ids);
+    if (error) { alert('Booking failed: ' + error.message); renderPlanner(); return; }
+    for (const x of rows) if (ids.includes(x.id)) x.scheduled_date = planDay;
+    keys.forEach(k => planAdded.delete(k));
+  }
   renderPlanner();
 }
 
 function renderPlanner() {
   if (currentView !== 'planner' || !planMatrix) return;
+  const stops = planStops();
+  // A referral or pickup that appeared since the matrix was fetched.
+  if (planMatrix.key !== stops.map(s => s.key).join(',')) { planLoadMatrix(stops).then(renderPlanner); return; }
   const m = planMatrix.m;
-  const cands = planCandidates();
-  const van = planVan();
-  const vanStops = van.map(r => planIdx(r.id));
-  const route = bestRoute(vanStops, m);
-  const load = van.reduce((t, r) => t + planLoad(r), 0);
+  const van = planVan(stops);
+  const vanStops = van.map(s => planIdx(s.key));
+  const delta = Object.fromEntries(stops.map(s => [planIdx(s.key), s.kind === 'd' ? -s.pts : s.pts]));
+  const route = bestRoute(vanStops, m, delta, VAN_CAPACITY);
+  const leaves = van.filter(s => s.kind === 'd').reduce((t, s) => t + s.pts, 0);
+  const back = van.filter(s => s.kind === 'p').reduce((t, s) => t + s.pts, 0);
+  const picks = back > 0 || van.some(s => s.kind === 'p');
+  const peak = van.length ? route.peak : 0;
   const approx = planMatrix.approx ? ' (approx.)' : '';
-  const name = r => [r.clients?.first_name, r.clients?.last_name].filter(Boolean).join(' ');
-  const town = r => [postTown(r.clients), (r.clients?.postcode || '').toUpperCase()].filter(Boolean).join(', ');
-  const pct = Math.min(100, Math.round(100 * load / VAN_CAPACITY));
-  const unbooked = van.filter(r => planAdded.has(r.id)).length;
+  const pct = Math.min(100, Math.round(100 * peak / VAN_CAPACITY));
+  const unbooked = van.filter(s => planAdded.has(s.key)).length;
+  let aboard = leaves;
 
   document.getElementById('plan-van').innerHTML = `
     <div class="plan-panel">
       <div class="plan-panel-head">Van for ${fmtDay(planDay)}</div>
       <div class="plan-drivers">Drivers free: AM ${esc(planDrivers.am.join(', ') || 'none recorded')} · PM ${esc(planDrivers.pm.join(', ') || 'none recorded')}</div>
-      <div class="plan-load ${load > VAN_CAPACITY ? 'over' : ''}">
+      <div class="plan-load ${peak > VAN_CAPACITY ? 'over' : ''}">
         <div class="plan-load-bar"><span style="width:${pct}%"></span></div>
-        <div>${Math.round(load)} of ${VAN_CAPACITY} points${load > VAN_CAPACITY
-          ? (van.some(isBigOrder) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}</div>
+        <div>${picks ? 'Fullest ' : ''}${Math.round(peak)} of ${VAN_CAPACITY} points${peak > VAN_CAPACITY
+          ? (van.some(isBigOrder) ? ' — includes a big order: check what was gathered' : ' — over a van') : ''}${picks
+          ? ` <span class="plan-muted">· leaves base with ${Math.round(leaves)}, back with ${Math.round(back)}</span>` : ''}</div>
       </div>
       ${van.length ? `
-        <ol class="plan-stops">${route.order.map(i => { const r = van.find(x => planIdx(x.id) === i); return `
-          <li><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted">${esc(town(r))} ·</span> <span class="${isBigOrder(r) ? 'plan-big' : 'plan-muted'}"${isBigOrder(r) ? ` title="${bigTitle}"` : ''}>${Math.round(planLoad(r))} pts</span>
+        <ol class="plan-stops">${route.order.map(i => { const s = van.find(x => planIdx(x.key) === i); aboard += delta[i]; return `
+          <li><b>${planRefLink(s)}</b> ${esc(planName(s))} <span class="plan-muted">${esc(planTown(s))} ·</span> <span class="${isBigOrder(s) ? 'plan-big' : 'plan-muted'}"${isBigOrder(s) ? ` title="${bigTitle}"` : ''}>${planPtsText(s)}</span>${picks
+            ? ` <span class="plan-muted">→ ${Math.round(aboard)} in van</span>` : ''}
             <div class="plan-stop-actions">
-            ${planPromptTags(r)}
-            ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
-            ${planAdded.has(r.id) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
-            ${planItemsBtn(r)}
-            <button class="plan-items-btn plan-remove" onclick="togglePlan(${r.id})" aria-label="Remove #${r.referral_number} from the van">${ICONS.close}<span>Remove</span></button>
+            ${planTags(s)}
+            ${planAdded.has(s.key) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
+            ${planItemsBtn(s)}
+            <button class="plan-items-btn plan-remove" onclick="togglePlan('${s.key}')" aria-label="Remove ${planRef(s)} from the van">${ICONS.close}<span>Remove</span></button>
             </div>
-            ${planOpen.has(r.id) ? planItemsHtml(r) : ''}</li>`; }).join('')}
+            ${planOpen.has(s.key) ? planItemsHtml(s) : ''}</li>`; }).join('')}
         </ol>
         <div class="plan-muted">Round trip ${route.miles.toFixed(1)} mi${approx}${van.length > 1 ? `, against ${separateMiles(vanStops, m).toFixed(1)} mi as separate trips` : ''}</div>
         ${unbooked ? `<button class="btn-save-edit plan-book" onclick="bookPlan()">${ICONS.check}<span>Book ${unbooked} for ${fmtDay(planDay)}</span></button>` : ''}`
-      : '<div class="plan-muted">Tap a delivery in the list or on the map to add it.</div>'}
+      : '<div class="plan-muted">Tap a delivery or pickup in the list or on the map to add it.</div>'}
     </div>`;
 
   // Everything not in the van, ranked by the road it would add to this van's
@@ -2225,45 +2375,42 @@ function renderPlanner() {
   // wishlist is what was asked for, and a whole-house wishlist rarely goes in
   // full (Richard, 17 Oct 2026). Only the admin knows what was gathered, so
   // into an EMPTY van it is never greyed out. Once the van has something in
-  // it, it greys out like anything else that would overfill it. Every row
-  // stays clickable either way.
-  const rows = cands.filter(r => !van.includes(r)).map(r => {
-    const i = planIdx(r.id);
-    const extra = bestRoute([...vanStops, i], m).miles - route.miles;
-    const pts = planLoad(r);
-    const big = pts > VAN_CAPACITY;
-    return { r, extra, pts, big, fits: (big && !van.length) || load + pts <= VAN_CAPACITY };
+  // it, it greys out like anything else that would overfill it at its fullest,
+  // in the best order it could go in. Every row stays clickable either way.
+  const rows = stops.filter(s => !van.includes(s)).map(s => {
+    const withIt = bestRoute([...vanStops, planIdx(s.key)], m, delta, VAN_CAPACITY);
+    const big = isBigOrder(s);
+    return { s, extra: withIt.miles - route.miles, big, fits: (big && !van.length) || !withIt.over };
   }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
 
   document.getElementById('plan-list').innerHTML = `
     <div class="plan-list-head plan-row-top">
-      <span class="plan-row-who">Delivery</span>
+      <span class="plan-row-who">Delivery or pickup</span>
       <div class="plan-row-nums">
         <span class="plan-col-miles">${van.length ? 'Extra miles if added' : 'Round trip from base'}${approx}</span>
         <span class="plan-col-load">Load size</span>
         <span class="plan-col-actions"></span>
       </div>
     </div>
-    ${rows.map(({ r, extra, pts, big, fits }) => `
-      <div class="plan-row${fits ? '' : ' plan-nofit'}" id="plan-row-${r.id}" onclick="togglePlan(${r.id})"
-        onmouseenter="planHighlight(${r.id}, true)" onmouseleave="planHighlight(${r.id}, false)">
+    ${rows.map(({ s, extra, big, fits }) => `
+      <div class="plan-row${fits ? '' : ' plan-nofit'}" id="plan-row-${s.key}" onclick="togglePlan('${s.key}')"
+        onmouseenter="planHighlight('${s.key}', true)" onmouseleave="planHighlight('${s.key}', false)">
         <div class="plan-row-top">
-          <div class="plan-row-who"><b>${planRefLink(r)}</b> ${esc(name(r))} <span class="plan-muted" style="white-space:nowrap">${esc(town(r))}</span></div>
+          <div class="plan-row-who"><b>${planRefLink(s)}</b> ${esc(planName(s))} <span class="plan-muted" style="white-space:nowrap">${esc(planTown(s))}</span></div>
           <div class="plan-row-nums">
             <span class="plan-col-miles">${van.length ? '+' : ''}${extra.toFixed(1)} mi</span>
-            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${Math.round(pts)} pts${fits ? '' : " · won't fit"}</span></span>
-            <span class="plan-col-actions">${planItemsBtn(r)}${planDateCell(r)}</span>
+            <span class="plan-col-load ${fits ? '' : 'plan-over'}"><span class="${big ? 'plan-big' : ''}"${big ? ` title="${bigTitle}"` : ''}>${planPtsText(s)}${fits ? '' : " · won't fit"}</span></span>
+            <span class="plan-col-actions">${planItemsBtn(s)}${planDateCell(s)}</span>
           </div>
         </div>
         <div class="plan-row-tags">
-          ${r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>'}
-          ${planPromptTags(r)}
-          ${planFlags(r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('')}
+          ${s.kind === 'd' ? (s.r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>') : ''}
+          ${planTags(s)}
         </div>
-        ${planOpen.has(r.id) ? planItemsHtml(r) : ''}
-      </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery is in this van.</div>'}`;
+        ${planOpen.has(s.key) ? planItemsHtml(s) : ''}
+      </div>`).join('') || '<div class="plan-muted" style="padding:12px">Every open delivery and pickup is in this van.</div>'}`;
 
-  renderPlanMap(cands, van, route);
+  renderPlanMap(stops, van, route);
 }
 
 // Leaflet only loads when the planner is first opened.
@@ -2281,14 +2428,18 @@ function planEnsureLeaflet() {
   });
 }
 
-function renderPlanMap(cands, van, route) {
+// Deliveries are circles and pickups diamonds; in the van both are blue.
+const planDiamond = (col, size, ring) => L.divIcon({ className: '', iconSize: [size, size],
+  html: `<div class="plan-diamond" style="width:${size}px;height:${size}px;background:${col};border-color:${ring || col}"></div>` });
+
+function renderPlanMap(stops, van, route) {
   if (!window.L) return;
   if (!planMap) {
     planMap = L.map('plan-map', { scrollWheelZoom: false });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(planMap);
     planLayer = L.layerGroup().addTo(planMap);
-    planMap.fitBounds([HQ, ...cands.map(r => [r.clients.latitude, r.clients.longitude])], { padding: [20, 20] });
+    planMap.fitBounds([HQ, ...stops.map(s => [s.lat, s.lon])], { padding: [20, 20] });
   }
   planMap.invalidateSize();
   planLayer.clearLayers();
@@ -2297,30 +2448,37 @@ function renderPlanMap(cands, van, route) {
   L.circleMarker(HQ, { radius: 7, color: colour('--text'), fillColor: colour('--text'), fillOpacity: 1 })
     .bindTooltip('Hidden Help').addTo(planLayer);
   if (van.length) {
-    const ll = i => i === 0 ? HQ : (r => [r.clients.latitude, r.clients.longitude])(cands.find(x => planIdx(x.id) === i));
+    const ll = i => i === 0 ? HQ : (s => [s.lat, s.lon])(stops.find(x => planIdx(x.key) === i));
     L.polyline([0, ...route.order, 0].map(ll), { color: colour('--blue'), weight: 3, opacity: .7, dashArray: '6 6' })
       .addTo(planLayer);
   }
   planMarkers = {};
-  for (const r of cands) {
-    const inVan = van.includes(r);
-    const c = inVan ? colour('--blue') : r.gathered_at ? colour('--green') : colour('--amber');
-    const style = { radius: inVan ? 10 : 7, color: c, fillColor: c, fillOpacity: inVan ? .9 : .5, weight: 2 };
-    const m = L.circleMarker([r.clients.latitude, r.clients.longitude], style)
-      .bindTooltip(`#${r.referral_number} ${esc(r.clients.postcode || '')} · ${Math.round(planLoad(r))} pts`)
-      .on('click', () => togglePlan(r.id))
-      .on('mouseover', () => planRowHighlight(r.id, true))
-      .on('mouseout', () => planRowHighlight(r.id, false))
+  for (const s of stops) {
+    const inVan = van.includes(s);
+    const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')} · ${planPtsText(s)}`;
+    let m, style;
+    if (s.kind === 'p') {
+      style = { col: inVan ? colour('--blue') : colour('--purple'), size: inVan ? 16 : 12 };
+      m = L.marker([s.lat, s.lon], { icon: planDiamond(style.col, style.size), opacity: inVan ? 1 : .75 });
+    } else {
+      const c = inVan ? colour('--blue') : s.r.gathered_at ? colour('--green') : colour('--amber');
+      style = { radius: inVan ? 10 : 7, color: c, fillColor: c, fillOpacity: inVan ? .9 : .5, weight: 2 };
+      m = L.circleMarker([s.lat, s.lon], style);
+    }
+    m.bindTooltip(tip)
+      .on('click', () => togglePlan(s.key))
+      .on('mouseover', () => planRowHighlight(s.key, true))
+      .on('mouseout', () => planRowHighlight(s.key, false))
       .addTo(planLayer);
-    planMarkers[r.id] = { m, style };
+    planMarkers[s.key] = { m, style, kind: s.kind };
   }
 }
 
 // And the other way: hovering a pin picks out its row, scrolling it into view
-// if it is off screen (the map is sticky, so it stays put). A delivery in the
-// van has no row in the list, so its pin highlights nothing.
-function planRowHighlight(id, on) {
-  const row = document.getElementById('plan-row-' + id);
+// if it is off screen (the map is sticky, so it stays put). A stop in the van
+// has no row in the list, so its pin highlights nothing.
+function planRowHighlight(key, on) {
+  const row = document.getElementById('plan-row-' + key);
   if (!row) return;
   row.classList.toggle('plan-row-hl', on);
   if (on) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -2328,17 +2486,18 @@ function planRowHighlight(id, on) {
 
 // Hovering a row picks out its pin: bigger, dark ring, on top, label showing.
 let planMarkers = {};
-function planHighlight(id, on) {
-  const p = planMarkers[id];
+function planHighlight(key, on) {
+  const p = planMarkers[key];
   if (!p) return;
-  if (on) {
-    p.m.setStyle({ radius: p.style.radius + 5, weight: 4, color: getComputedStyle(document.documentElement).getPropertyValue('--text').trim(), fillOpacity: 1 });
+  const dark = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+  if (p.kind === 'p') {
+    p.m.setIcon(on ? planDiamond(p.style.col, p.style.size + 6, dark) : planDiamond(p.style.col, p.style.size));
+    p.m.setZIndexOffset(on ? 1000 : 0);
+  } else if (on) {
+    p.m.setStyle({ radius: p.style.radius + 5, weight: 4, color: dark, fillOpacity: 1 });
     p.m.bringToFront();
-    p.m.openTooltip();
-  } else {
-    p.m.setStyle(p.style);
-    p.m.closeTooltip();
-  }
+  } else p.m.setStyle(p.style);
+  if (on) p.m.openTooltip(); else p.m.closeTooltip();
 }
 
 // NB: saveVolunteer(id, field, selectId) further down writes referral
