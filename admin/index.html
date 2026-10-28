@@ -1397,9 +1397,10 @@ async function loadPickups() {
   renderPickups();
 }
 
+const PK_MAX = 20;   // pickups_code_check in the database
 function pkFreeCodes(exceptId) {
   const taken = new Set(allPickups.filter(x => x.id !== exceptId).map(x => x.code));
-  return Array.from({ length: 15 }, (_, i) => i + 1).filter(n => !taken.has(n));
+  return Array.from({ length: PK_MAX }, (_, i) => i + 1).filter(n => !taken.has(n));
 }
 
 function pkLeave() {
@@ -1413,7 +1414,7 @@ function pkOpen(id) {
 function pkNew() {
   if (!pkLeave()) return;
   const free = pkFreeCodes();
-  if (!free.length) { alert('All 15 pickup numbers are in use. Mark one picked up first.'); return; }
+  if (!free.length) { alert(`All ${PK_MAX} pickup numbers are in use. Mark one picked up first.`); return; }
   pkSel = { code: free[0] };
   renderPickups();
 }
@@ -1430,7 +1431,7 @@ function renderPickups() {
     <div class="vol-view-header"><h2>Pickups</h2></div>
     <div class="pk-layout">
       <div class="card pk-list">
-        <div class="pk-list-head"><span style="flex:1">Active <span class="pk-sub">${allPickups.length} of 15</span></span>
+        <div class="pk-list-head"><span style="flex:1">Active <span class="pk-sub">${allPickups.length} of ${PK_MAX}</span></span>
           <button class="btn" onclick="pkNew()">New pickup</button></div>
         ${rows || '<div class="pk-row pk-sub" style="cursor:default">No active pickups</div>'}
       </div>
