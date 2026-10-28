@@ -881,6 +881,7 @@ a { color: inherit; text-decoration: none; }
 .plan-stops { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .plan-stop-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
 .plan-stops .tag { white-space: nowrap; }
+.tag.plan-note { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; box-sizing: border-box; }
 .plan-remove:hover { color: var(--red); border-color: var(--red); }
 .plan-book { align-self: flex-start; }
 .plan-list { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -2244,7 +2245,7 @@ function planFlags(r) {
 function planTags(s) {
   if (s.kind === 'p') {
     const n = String(s.p.notes || '').replace(/\*\*|__/g, '').trim();
-    return n ? `<span class="tag tag-rejected" title="${esc(n)}">${esc(n.length > 80 ? n.slice(0, 79) + '…' : n)}</span>` : '';
+    return n ? `<span class="tag tag-rejected plan-note" title="${esc(n)}">${esc(n)}</span>` : '';
   }
   return planPromptTags(s.r) + planFlags(s.r).map(f => `<span class="tag tag-rejected">${f}</span>`).join('');
 }
