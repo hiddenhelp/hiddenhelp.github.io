@@ -1346,6 +1346,7 @@ const pickupFormat = s => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/__(.
 
 // P4 Sofa, 2 armchairs
 // Jean Trelawny 01209714532
+// Alternative contact: Sam Trelawny 07700900123     (only when given)
 // <a href="…">12 Trevu Road, Camborne TR14 8SR</a>
 // Ring before — side gate
 // The first two lines are the shape hh_utils.parse_collection_message reads.
@@ -1354,6 +1355,8 @@ function pickupMessage(p) {
   const lines = [`P${p.code} ${pickupEsc(oneLine(p.items))}`]
   const donor = [oneLine(p.donor_name), pickupPhone(p.donor_phone)].filter(Boolean).join(' ')
   if (donor) lines.push(pickupEsc(donor))
+  const alt = [oneLine(p.alt_contact_name), pickupPhone(p.alt_contact_phone)].filter(Boolean).join(' ')
+  if (alt) lines.push(pickupEsc('Alternative contact: ' + alt))
   const addr = oneLine(p.address)
   const url = pickupMapsUrl(p)
   if (addr) lines.push(url ? `<a href="${pickupEsc(url)}">${pickupEsc(addr)}</a>` : pickupEsc(addr))
@@ -1368,7 +1371,8 @@ const pkTidy = s => String(s ?? '').trim() || null;
 function pkRow(p) {
   return {
     code: p.code, items: pkTidy(p.items), donor_name: pkTidy(p.donor_name),
-    donor_phone: normalisePhone(p.donor_phone), address: pkTidy(p.address),
+    donor_phone: normalisePhone(p.donor_phone), alt_contact_name: pkTidy(p.alt_contact_name),
+    alt_contact_phone: normalisePhone(p.alt_contact_phone), address: pkTidy(p.address),
     lat: p.lat ?? null, lon: p.lon ?? null, geocoded_address: p.geocoded_address ?? null,
     geocode_partial: p.geocode_partial ?? null, notes: pkTidy(p.notes),
   };
@@ -1464,6 +1468,8 @@ function pkForm(p) {
       <div style="grid-column:1/-1">${field('Donation items', 'items')}<div class="vol-hint plan-items-big" id="pk-load"></div></div>
       ${field('Donor name', 'donor_name')}
       <div class="vol-field"><label>Donor phone</label><input class="vol-input" inputmode="tel" value="${esc(p.donor_phone || '')}" oninput="pkSet('donor_phone', this.value); pkPhoneWarn(false)" onblur="pkPhoneWarn(true)"><div id="pk-phone-warn">${phoneWarn(normalisePhone(p.donor_phone))}</div></div>
+      ${field('Alternative contact (optional)', 'alt_contact_name')}
+      ${field('Alternative contact phone', 'alt_contact_phone', 'inputmode="tel"')}
       <div class="vol-field" style="grid-column:1/-1"><label>Donor address</label>
         <textarea class="vol-textarea" oninput="pkSet('address', this.value)">${esc(p.address || '')}</textarea>
         <div class="pk-loc" id="pk-loc"></div></div>
