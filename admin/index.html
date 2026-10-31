@@ -918,6 +918,8 @@ a { color: inherit; text-decoration: none; }
 .plan-items-btn.active { background: var(--bg2); }
 .plan-over { color: var(--red); }
 .plan-kinds { padding: 10px 12px 0; }
+.plan-search, .pk-search { padding: 10px 12px 0; }
+.pk-search { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .tag-pickup { background: var(--purple-bg); color: var(--purple); }
 .plan-diamond { box-sizing: border-box; transform: rotate(45deg); border: 2px solid; }
 .plan-date { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
@@ -1432,21 +1434,28 @@ function pkNew() {
   renderPickups();
 }
 
-function renderPickups() {
-  const el = document.getElementById('pickups-view');
-  const rows = allPickups.map(p => `
+let pkQuery = '';
+function pkRowsHtml() {
+  const shown = allPickups.filter(p => searchHit(pkQuery, ['P' + p.code, p.items, p.donor_name, p.donor_phone,
+    p.alt_contact_name, p.alt_contact_phone, p.address, p.geocoded_address, p.notes]));
+  return shown.map(p => `
     <div class="pk-row${pkSel?.id === p.id ? ' sel' : ''}" onclick="pkOpen(${p.id})">
       <span class="pk-code">P${p.code}</span>
       <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc(p.donor_name || '')}${p.scheduled_date ? ` · booked ${fmtDay(p.scheduled_date)}` : ''}</span></span>
       ${PK_TAG[pkState(p)]}
-    </div>`).join('');
+    </div>`).join('') || `<div class="pk-row pk-sub" style="cursor:default">${pkQuery ? 'No pickup matches' : 'No active pickups'}</div>`;
+}
+function pkSearch(q) { pkQuery = q; document.getElementById('pk-rows').innerHTML = pkRowsHtml(); }
+function renderPickups() {
+  const el = document.getElementById('pickups-view');
   el.innerHTML = `
     <div class="vol-view-header"><h2>Pickups</h2></div>
     <div class="pk-layout">
       <div class="card pk-list">
         <div class="pk-list-head"><span style="flex:1">Active <span class="pk-sub">${allPickups.length} of ${PK_MAX}</span></span>
           <button class="btn" onclick="pkNew()">New pickup</button></div>
-        ${rows || '<div class="pk-row pk-sub" style="cursor:default">No active pickups</div>'}
+        <div class="pk-search"><input class="search-input" type="search" placeholder="Search P-number, items, donor, address…" value="${esc(pkQuery)}" oninput="pkSearch(this.value)" onsearch="pkSearch(this.value)"></div>
+        <div id="pk-rows">${pkRowsHtml()}</div>
       </div>
       <div>${pkSel ? pkForm(pkSel) : '<div class="pk-sub" style="padding:12px">Open a pickup, or start a new one.</div>'}</div>
     </div>`;
@@ -1989,6 +1998,15 @@ let planOpen    = new Set();   // stop keys whose items are expanded
 // Which kind of stop the list and map show: 'all', 'd' or 'p' (28 Oct 2026).
 // Remembered on this browser; the van panel always shows the whole trip.
 let planKind = (() => { try { return localStorage.getItem('planKind') || 'all'; } catch (e) { return 'all'; } })();
+let planQuery = '';
+function setPlanQuery(q) { planQuery = q; renderPlanner(); }
+// What the planner's search box looks in.
+function planHit(s) {
+  const c = s.kind === 'd' ? s.r.clients || {} : {};
+  return searchHit(planQuery, [planRef(s), planName(s), planTown(s)].concat(s.kind === 'd'
+    ? [c.address, c.geocoded_address, s.r.referrers?.name, s.r.referrers?.organisation]
+    : [s.p.items, s.p.address, s.p.geocoded_address, s.p.alt_contact_name, s.p.notes]));
+}
 function setPlanKind(kind) {
   planKind = kind;
   try { localStorage.setItem('planKind', kind); } catch (e) { /* private mode: just this visit */ }
@@ -2279,7 +2297,10 @@ async function openPlanner() {
         <label class="avail-week">Day <input type="date" class="vol-input plan-day" id="plan-day" onchange="setPlanDay(this.value)"></label>
       </div>
       <div class="plan-grid">
-        <div id="plan-list" class="plan-list"><div class="loading">Loading…</div></div>
+        <div class="plan-list">
+          <div class="plan-search"><input class="search-input" type="search" placeholder="Search ref, P-number, name, town, postcode…" oninput="setPlanQuery(this.value)" onsearch="setPlanQuery(this.value)"></div>
+          <div id="plan-list"><div class="loading">Loading…</div></div>
+        </div>
         <div class="plan-side"><div id="plan-van"></div><div id="plan-map" class="plan-map"></div></div>
       </div>`;
   }
@@ -2394,7 +2415,7 @@ function renderPlanner() {
   const waiting = stops.filter(s => !van.includes(s));
   const count = k => waiting.filter(s => k === 'all' || s.kind === k).length;
   const kindPill = (k, label) => `<button class="pill${planKind === k ? ' active' : ''}" onclick="setPlanKind('${k}')">${label} (${count(k)})</button>`;
-  const rows = waiting.filter(s => planKind === 'all' || s.kind === planKind).map(s => {
+  const rows = waiting.filter(s => (planKind === 'all' || s.kind === planKind) && planHit(s)).map(s => {
     const withIt = bestRoute([...vanStops, planIdx(s.key)], m, delta, VAN_CAPACITY, late);
     const big = isBigOrder(s);
     return { s, extra: withIt.miles - route.miles, big, fits: (big && !van.length) || !withIt.over };
@@ -2426,7 +2447,7 @@ function renderPlanner() {
           ${planTags(s)}
         </div>
         ${planOpen.has(s.key) ? planItemsHtml(s) : ''}
-      </div>`).join('') || `<div class="plan-muted" style="padding:12px">${count('all') ? 'Nothing of this kind waiting.' : 'Every open delivery and pickup is in this van.'}</div>`}`;
+      </div>`).join('') || `<div class="plan-muted" style="padding:12px">${planQuery ? 'Nothing waiting matches the search.' : count('all') ? 'Nothing of this kind waiting.' : 'Every open delivery and pickup is in this van.'}</div>`}`;
 
   renderPlanMap(stops, van, route);
 }
@@ -2473,7 +2494,7 @@ function renderPlanMap(stops, van, route) {
   planMarkers = {};
   for (const s of stops) {
     const inVan = van.includes(s);
-    if (!inVan && planKind !== 'all' && s.kind !== planKind) continue;   // the map matches the list
+    if (!inVan && ((planKind !== 'all' && s.kind !== planKind) || !planHit(s))) continue;   // the map matches the list
     const tip = `${planRef(s)} ${esc(planTown(s).split(', ').pop() || '')} · ${planPtsText(s)}`;
     let m, style;
     if (s.kind === 'p') {
@@ -2672,6 +2693,10 @@ function matchesTownFilter(r) {
   if (r.fulfilment_type !== 'delivery') return false;
   return postTown(r.clients) === townFilter;
 }
+
+// The search boxes on Referrals, Pickups and the Planner: any field containing
+// the typed text, case ignored.
+const searchHit = (q, vals) => !q || vals.some(v => v != null && String(v).toLowerCase().includes(q.toLowerCase()));
 
 function filterReferrals() {
   const filtered = allReferrals.filter(r => {
