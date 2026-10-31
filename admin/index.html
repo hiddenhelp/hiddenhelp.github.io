@@ -2346,6 +2346,12 @@ function togglePlan(key) {
 // The one write the planner makes: scheduled_date on the referral, which its
 // card shows as "Scheduled", or on the pickup. Editable from any row.
 const PLAN_TABLE = { d: 'referrals', p: 'pickups' };
+// Off every day: back to waiting with no date (31 Oct 2026).
+function unbookPlan(key) {
+  const s = planStop(key);
+  if (confirm(`Unbook ${planRef(s)} from ${fmtDay(s.date)}? It goes back to waiting, with no date.`)) setPlanDate(key, null);
+}
+
 async function setPlanDate(key, day) {
   const s = planStop(key), row = s.r || s.p;
   const { error } = await db.from(PLAN_TABLE[s.kind]).update({ scheduled_date: day || null }).eq('id', row.id);
@@ -2399,7 +2405,9 @@ function renderPlanner() {
             ${planTags(s)}
             ${planAdded.has(s.key) ? '<span class="tag tag-wishlist">not booked</span>' : ''}
             ${planItemsBtn(s)}
-            <button class="plan-items-btn plan-remove" onclick="togglePlan('${s.key}')" aria-label="Remove ${planRef(s)} from the van">${ICONS.close}<span>Remove</span></button>
+            ${s.date === planDay
+              ? `<button class="plan-items-btn plan-remove" onclick="unbookPlan('${s.key}')" aria-label="Unbook ${planRef(s)}">${ICONS.close}<span>Unbook</span></button>`
+              : `<button class="plan-items-btn plan-remove" onclick="togglePlan('${s.key}')" aria-label="Remove ${planRef(s)} from the van">${ICONS.close}<span>Remove</span></button>`}
             </div>
             ${planOpen.has(s.key) ? planItemsHtml(s) : ''}</li>`; }).join('')}
         </ol>
@@ -2448,7 +2456,7 @@ function renderPlanner() {
           </div>
         </div>
         <div class="plan-row-tags">
-          ${s.date ? `<span class="tag tag-booked">Booked ${fmtDay(s.date)}</span>` : ''}
+          ${s.date ? `<span class="tag tag-booked">Booked ${fmtDay(s.date)}</span><button class="plan-items-btn plan-remove" onclick="event.stopPropagation(); unbookPlan('${s.key}')" aria-label="Unbook ${planRef(s)}">${ICONS.close}<span>Unbook</span></button>` : ''}
           ${s.kind === 'd' ? (s.r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>') : ''}
           ${planTags(s)}
         </div>
