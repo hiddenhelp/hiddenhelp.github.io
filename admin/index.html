@@ -918,6 +918,7 @@ a { color: inherit; text-decoration: none; }
 .plan-items-btn.active { background: var(--bg2); }
 .plan-over { color: var(--red); }
 .plan-kinds { padding: 10px 12px 0; }
+.tag-booked { background: var(--blue-bg); color: var(--blue); }
 .plan-search, .pk-search { padding: 10px 12px 0; }
 .pk-search { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .tag-pickup { background: var(--purple-bg); color: var(--purple); }
@@ -2334,6 +2335,10 @@ function togglePlan(key) {
     if (confirm(`Unbook ${planRef(s)} from ${fmtDay(planDay)}?`)) setPlanDate(key, null);
     return;
   }
+  // Booked for another day: still listed, so it can be moved, but never moved
+  // by a stray tap. Adding one used to rebook it here silently (31 Oct 2026).
+  if (s.date && !planAdded.has(key)
+      && !confirm(`${planRef(s)} is booked for ${fmtDay(s.date)}. Move it to ${fmtDay(planDay)}?`)) return;
   if (planAdded.has(key)) planAdded.delete(key); else planAdded.add(key);
   renderPlanner();
 }
@@ -2419,7 +2424,7 @@ function renderPlanner() {
     const withIt = bestRoute([...vanStops, planIdx(s.key)], m, delta, VAN_CAPACITY, late);
     const big = isBigOrder(s);
     return { s, extra: withIt.miles - route.miles, big, fits: (big && !van.length) || !withIt.over };
-  }).sort((a, b) => (b.fits - a.fits) || (a.extra - b.extra));
+  }).sort((a, b) => (!!a.s.date - !!b.s.date) || (b.fits - a.fits) || (a.extra - b.extra));
 
   document.getElementById('plan-list').innerHTML = `
     <div class="filter-row plan-kinds">${kindPill('all', 'All')}${kindPill('d', 'Deliveries')}${kindPill('p', 'Pickups')}</div>
@@ -2443,6 +2448,7 @@ function renderPlanner() {
           </div>
         </div>
         <div class="plan-row-tags">
+          ${s.date ? `<span class="tag tag-booked">Booked ${fmtDay(s.date)}</span>` : ''}
           ${s.kind === 'd' ? (s.r.gathered_at ? '<span class="tag tag-completed">Gathered</span>' : '<span class="tag tag-wishlist">Not gathered</span>') : ''}
           ${planTags(s)}
         </div>
