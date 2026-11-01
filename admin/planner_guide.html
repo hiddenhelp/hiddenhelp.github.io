@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using the Delivery Planner</title>
+<!-- From the Claude Doc "Using the Delivery Planner" (rev 1033, 1 Nov 2026), edited by Richard.
+     Deployed beside index.html by pages_deploy.py; the Planner screen links here. -->
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#F4F5F1; --surface:#FFFFFF; --border:#D6DACF; --text:#181A17; --text2:#535A51;
+        --accent:#2E6B4E; --green:#3A7D44; --amber:#8A6000; --purple:#5B3D8A; --blue:#1A5FA8; --red:#9B2020; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 'Sora', sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+.sub { color: var(--text2); font-size: 13px; margin: 0 0 24px; }
+h2 { font-size: 18px; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--accent); }
+p, ul, ol { margin: 0 0 12px; }
+li { margin-bottom: 6px; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 16px; background: var(--surface); font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border: 1px solid var(--border); }
+th { background: var(--bg); font-weight: 600; }
+.key { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px; }
+.dot { border-radius: 50%; }
+.dia { transform: rotate(45deg) scale(.85); }
+.line { width: 18px; height: 0; border-top: 3px dashed var(--blue); vertical-align: 3px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Using the Delivery Planner</h1>
+<p class="sub">Hidden Help · 1 Nov 2026</p>
+
+<h2>What it's for</h2>
+<p>The planner is designed to help schedule deliveries and pickups for each day, showing each in terms of proximity and load size. For each day, as you add deliveries or pickups to that day's list, the list changes to show which jobs add the fewest miles, and whether everything will fit in the van.</p>
+<p>Open it from the <b>Planner</b> tab on the dashboard. Every delivery and pickup that's waiting is listed there.</p>
+
+<h2>Reading the screen</h2>
+<p>The screen has three parts: the list on the left, the van load top right, and the map bottom right.</p>
+<p><b>The list</b> is everything waiting. With the van empty, the miles column shows the round trip from base. Once you've added something, it shows how many extra miles each job would add to the trip. The jobs nearest your route rise to the top. <b>Load size</b> is a rough guide to how much van space a job takes. A job marked <b>won't fit</b> would overfill the van.</p>
+<p>Above the list:</p>
+<ul>
+  <li><b>All / Deliveries / Pickups</b> narrows the list and the map to one kind.</li>
+  <li><b>The search box</b> finds a job by referral number, P-number, name, town or postcode.</li>
+</ul>
+<p><b>The Van for [Date]</b> shows the day you're planning, which drivers have said they're free that morning and afternoon (<b>NB</b>: this depends on driver availability being filled in on the Availability screen), and the stops in the best order to drive them when Deliveries and Pickups have been added. The bar at the top shows roughly how full the van will be if those Deliveries and Pickups are done. If it goes red and says <b>Too much for one van</b>, there are two adjustments you can make:</p>
+<ul>
+  <li>Adjust the items in the Delivery. E.g. wishlists often contain items that we either are unable to supply at the time, or over-order things like chests of drawers. You can edit the list of items on a Delivery wishlist by clicking on the Items button, reducing the number of items (e.g. 1 chest of drawers instead of 2), or removing them completely where we have none in stock.</li>
+  <li>Remove the Delivery or Pickup from the list completely. Just click the Remove button, and that Delivery or Pickup will reappear on the Planner list.</li>
+</ul>
+<p><b>The map</b> shows the same jobs as the list:</p>
+<table>
+  <tr><th>On the map</th><th>Means</th></tr>
+  <tr><td><span class="key dot" style="background:var(--green)"></span>Green circle</td><td>Delivery, items gathered</td></tr>
+  <tr><td><span class="key dot" style="background:var(--amber)"></span>Amber circle</td><td>Delivery, not gathered yet</td></tr>
+  <tr><td><span class="key dia" style="background:var(--purple)"></span>Purple diamond</td><td>Pickup</td></tr>
+  <tr><td><span class="key dot" style="background:var(--blue)"></span>Blue and larger</td><td>In the van</td></tr>
+  <tr><td><span class="key" style="background:var(--red)"></span>Red square</td><td>Hidden Help warehouse</td></tr>
+  <tr><td><span class="key line"></span>Blue dashed line</td><td>The route</td></tr>
+</table>
+
+<h2>Planning a day</h2>
+<p>Pick a day, add the jobs, check the van, then book. Nothing is saved until you press <b>Book</b>.</p>
+<ol>
+  <li><b>Pick the day</b> with the <b>Day</b> box at the top right. Check the drivers free that day before you go further.</li>
+  <li><b>Add a first job.</b> Tap it in the list or on the map. A good first job is usually the furthest or the most urgent.</li>
+  <li><b>Add the jobs near it.</b> The list re-sorts after each one, so the cheapest extra jobs are now at the top. Keep adding while the miles stay small and the bar stays green.</li>
+  <li><b>Check the van.</b> The stops are in driving order. Deliveries always come first, so the van empties before it collects anything. Tap <b>Items</b> on a stop to see what's on it.</li>
+  <li><b>Press Book.</b> The green button reads, for example, <b>Book 4 for Mon 2 Nov</b>. Each job is then saved to that day, and shows on the referral as scheduled.</li>
+</ol>
+<p>If you change the day before pressing Book, the jobs you'd added but not booked are cleared. Jobs you've already booked stay booked.</p>
+
+<h2>Handling changes</h2>
+<p>Plans are always likely to change so here's a list of the changes likely to happen and how to make them. The planner always asks before it changes a booking.</p>
+<table>
+  <tr><th>You want to…</th><th>Do this</th></tr>
+  <tr><td>Take out a job you added but haven't booked yet</td><td>Press <b>Remove</b> on it in the van</td></tr>
+  <tr><td>Cancel a booking, so the job goes back to waiting with no date</td><td>Press <b>Unbook</b>, either on the stop in the van or next to its blue <b>Booked</b> label in the list</td></tr>
+  <tr><td>Move a booked job to another day</td><td>Change the <b>Day</b> box to the new day, then tap the job in the list. It says which day it's booked for and asks before moving it</td></tr>
+  <tr><td>Change or clear a date without planning the van</td><td>Use the date box at the end of the job's row in the list (<b>Set date</b> if it has none)</td></tr>
+  <tr><td>See what's already booked for a day</td><td>Set the <b>Day</b> box to that day. Its booked jobs are already in the van</td></tr>
+</table>
+<p>A job booked for a different day stays in the list with a blue <b>Booked</b> label, for example <b>Booked Tue 3 Nov</b>. These jobs sit at the bottom of the list, so they don't get mixed up with jobs that are still free.</p>
+<p>A collected pickup stays on the planner until someone marks it <b>Picked up</b> on the Pickups tab. That also deletes its Telegram post.</p>
+
+<h2>Tips</h2>
+<ul>
+  <li><b>Load sizes are only an educated guess.</b> For a pickup, the planner works out the load from what was written about it, so "double divan &amp; mattress" counts as more than "chair". Trust the bar for a rough answer, and your own judgement for a close call.</li>
+  <li><b>"Big order" is only a warning, and is based on the wishlist the client provided.</b> If the wishlist looks too big for the van, you can edit the items list to remove things we know we don't have or reduce the number of items we are willing to provide.</li>
+  <li><b>"None recorded" for drivers</b> means nobody has entered availability for that day.</li>
+  <li><b>Gathered first.</b> An amber delivery hasn't been marked as gathered yet.</li>
+  <li><b>Tap a reference number</b> to open that referral or pickup in full.</li>
+</ul>
+</main>
+</body>
+</html>
