@@ -2500,7 +2500,8 @@ function renderPlanMap(stops, van, route) {
   planLayer.clearLayers();
   const css = getComputedStyle(document.documentElement);
   const colour = v => css.getPropertyValue(v).trim();
-  L.circleMarker(HQ, { radius: 7, color: colour('--text'), fillColor: colour('--text'), fillOpacity: 1 })
+  L.marker(HQ, { icon: L.divIcon({ className: '', iconSize: [14, 14],
+    html: `<div style="width:14px;height:14px;background:${colour('--red')}"></div>` }) })   // base: red square
     .bindTooltip('Hidden Help').addTo(planLayer);
   if (van.length) {
     const ll = i => i === 0 ? HQ : (s => [s.lat, s.lon])(stops.find(x => planIdx(x.key) === i));
