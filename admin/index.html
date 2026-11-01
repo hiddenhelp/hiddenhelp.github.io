@@ -2296,7 +2296,7 @@ async function openPlanner() {
   if (!el.querySelector('#plan-map')) {
     el.innerHTML = `
       <div class="vol-view-header avail-header">
-        <div style="flex:1"><h2>Delivery Planner</h2><div class="plan-sub">Deliveries first, then pickups</div></div>
+        <div style="flex:1"><h2>Delivery Planner</h2><div class="plan-sub">Deliveries first, then pickups · <a href="planner_guide.html" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:underline">How to use the planner</a></div></div>
         <label class="avail-week">Day <input type="date" class="vol-input plan-day" id="plan-day" onchange="setPlanDay(this.value)"></label>
       </div>
       <div class="plan-grid">
