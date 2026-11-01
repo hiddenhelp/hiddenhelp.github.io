@@ -1645,8 +1645,10 @@ async function pkRemove(pickedUp) {
   const post = p.message_id ? ' Its Telegram post is deleted.' : '';
   if (!confirm((pickedUp ? `Mark P${p.code} picked up?` : `Discard P${p.code}?`) + post + ` P${p.code} becomes free.`)) return;
   try {
-    if (p.message_id) await pkCall({ action: 'delete', id: p.id });
-    else {
+    if (p.message_id) {
+      const out = await pkCall({ action: 'delete', id: p.id });
+      if (out.warning) alert(out.warning);
+    } else {
       const { error } = await db.from('pickups').delete().eq('id', p.id);
       if (error) throw new Error(error.message);
     }
