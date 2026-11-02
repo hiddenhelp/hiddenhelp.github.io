@@ -1377,7 +1377,7 @@ function pkRow(p) {
     donor_phone: normalisePhone(p.donor_phone), alt_contact_name: pkTidy(p.alt_contact_name),
     alt_contact_phone: normalisePhone(p.alt_contact_phone), address: pkTidy(p.address),
     lat: p.lat ?? null, lon: p.lon ?? null, geocoded_address: p.geocoded_address ?? null,
-    geocode_partial: p.geocode_partial ?? null, notes: pkTidy(p.notes),
+    geocode_partial: p.geocode_partial ?? null, notes: pkTidy(p.notes), source: p.source || null,
   };
 }
 function pkDirty(p = pkSel) {
@@ -1414,6 +1414,8 @@ async function loadPickups() {
 }
 
 const PK_MAX = 20;   // pickups_code_check in the database
+// Where it came in from: dashboard only, never in the post (2 Nov 2026).
+const PK_SOURCES = ['Email', 'Messenger', 'HH Office'];   // pickups_source_check
 function pkFreeCodes(exceptId) {
   const taken = new Set(allPickups.filter(x => x.id !== exceptId).map(x => x.code));
   return Array.from({ length: PK_MAX }, (_, i) => i + 1).filter(n => !taken.has(n));
@@ -1442,7 +1444,7 @@ function pkRowsHtml() {
   return shown.map(p => `
     <div class="pk-row${pkSel?.id === p.id ? ' sel' : ''}" onclick="pkOpen(${p.id})">
       <span class="pk-code">P${p.code}</span>
-      <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc(p.donor_name || '')}${p.scheduled_date ? ` · booked ${fmtDay(p.scheduled_date)}` : ''}</span></span>
+      <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc([p.donor_name, p.source].filter(Boolean).join(' · '))}${p.scheduled_date ? ` · booked ${fmtDay(p.scheduled_date)}` : ''}</span></span>
       ${PK_TAG[pkState(p)]}
     </div>`).join('') || `<div class="pk-row pk-sub" style="cursor:default">${pkQuery ? 'No pickup matches' : 'No active pickups'}</div>`;
 }
@@ -1476,6 +1478,9 @@ function pkForm(p) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">${code}</div>
     <div class="vol-edit-grid" style="max-width:none">
       <div style="grid-column:1/-1">${field('Donation items', 'items')}<div class="vol-hint plan-items-big" id="pk-load"></div></div>
+      <div class="vol-field"><label>Source</label><select class="vol-input" onchange="pkSet('source', this.value)">
+        ${['', ...PK_SOURCES].map(o => `<option value="${o}"${o === (p.source || '') ? ' selected' : ''}>${o || 'Choose…'}</option>`).join('')}</select></div>
+      <div></div>
       ${field('Donor name', 'donor_name')}
       <div class="vol-field"><label>Donor phone</label><input class="vol-input" inputmode="tel" value="${esc(p.donor_phone || '')}" oninput="pkSet('donor_phone', this.value); pkPhoneWarn(false)" onblur="pkPhoneWarn(true)"><div id="pk-phone-warn">${phoneWarn(normalisePhone(p.donor_phone))}</div></div>
       ${field('Alternative contact (optional)', 'alt_contact_name')}
@@ -1602,6 +1607,7 @@ async function pkPin() {
 async function pkSave() {
   const p = pkSel, row = pkRow(p);
   if (!row.items) { alert('Enter the donation items first.'); return null; }
+  if (!row.source) { alert('Pick where this pickup came from (Source) first.'); return null; }
   if (p.id && !pkDirty()) return p;
   const q = p.id
     ? db.from('pickups').update({ ...row, updated_at: new Date().toISOString() }).eq('id', p.id)
