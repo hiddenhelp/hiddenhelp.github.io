@@ -1387,13 +1387,18 @@ function pkDirty(p = pkSel) {
   const row = pkRow(p);
   return Object.keys(row).some(k => (saved[k] ?? null) !== row[k]);
 }
+// Out of date only when the post would READ differently: posted_message is
+// the text the pickups function sent. A save-after-posting rule put the tag on
+// 11 of 12 pickups once admins filled in Source, which is not in the post
+// (3 Nov 2026). Rows posted before the column existed keep the date rule.
 function pkState(p) {
   if (!p.message_id) return 'draft';
+  if (p.posted_message != null) return pickupMessage(pkRow(p)) === p.posted_message ? 'posted' : 'changed';
   return p.posted_at && p.updated_at > p.posted_at ? 'changed' : 'posted';
 }
 const PK_TAG = { draft: '<span class="tag tag-wishlist">Draft</span>',
                  posted: '<span class="tag tag-completed">Posted</span>',
-                 changed: '<span class="tag tag-cancelled">Changed, not reposted</span>' };
+                 changed: '<span class="tag tag-wishlist">Post out of date</span>' };
 
 // The Planner reads them too, so it fetches without rendering this tab.
 async function fetchPickups() {
