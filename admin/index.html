@@ -245,6 +245,15 @@ a { color: inherit; text-decoration: none; }
   margin: 0 3px;
   opacity: 0.4;
 }
+.filter-label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: -2px; }
+.closed-row { padding-left: 10px; border-left: 2px solid var(--border); }
+.closed-row[hidden] { display: none; }
+/* Type is one choice of three, so it reads as one control: joined segments. */
+.pill-seg { display: inline-flex; flex-shrink: 0; }
+.pill-seg .pill { border-radius: 0; margin-left: -1px; }
+.pill-seg .pill:first-child { border-radius: 99px 0 0 99px; margin-left: 0; }
+.pill-seg .pill:last-child { border-radius: 0 99px 99px 0; }
+.pill-seg .pill.active { position: relative; }
 #town-filter {
   font-size: 11px;
   padding: 3px 6px;
@@ -955,7 +964,11 @@ a { color: inherit; text-decoration: none; }
 .vol-checks { display: flex; gap: 18px; align-items: center; grid-column: 1 / -1; }
 .vol-checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--text2); cursor: pointer; }
 .vol-hint { font-size: 11px; color: var(--text3); margin-top: 3px; }
-.pk-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 640px); gap: 16px; align-items: start; }
+/* The list as wide as the Referrals sidebar, items held to two lines, so a
+   laptop screen shows the whole list rather than half of it (3 Nov 2026). */
+.pk-layout { display: grid; grid-template-columns: minmax(0, var(--sidebar-w)) minmax(0, 640px); gap: 16px; align-items: start; }
+.pk-items { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pk-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; text-align: right; }
 .pk-list { padding: 0; overflow: hidden; }
 .pk-list-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
 .pk-row { display: flex; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
@@ -1097,21 +1110,30 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
           <input id="search" class="search-input" type="search" placeholder="Search name, ref, org…" style="flex:1;" />
           <button id="sort-btn" title="Sort order" style="flex-shrink:0;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-size:14px;line-height:1;cursor:pointer;transition:background .12s;" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='var(--bg)'">↓</button>
         </div>
+        <!-- Grouped 3 Nov 2026: stage in lifecycle order, the three closed
+             reasons folded behind Closed, type as a switch beside the area. -->
+        <div class="filter-label">Stage</div>
         <div class="filter-row">
-          <button class="pill" data-status="all">All</button>
           <button class="pill" data-status="untriaged" title="No number yet, and not marked a duplicate">Untriaged</button>
+          <button class="pill" data-status="awaiting-wishlist">Awaiting wishlist</button>
           <button class="pill active" data-status="open" title="Wishlist in, not yet gathered, and not yet posted to Telegram">Open</button>
           <button class="pill" data-status="posted" title="Posted to Telegram and still open">Posted</button>
-          <button class="pill" data-status="awaiting-wishlist">Awaiting wishlist</button>
           <button class="pill" data-status="completed">Completed</button>
+          <button class="pill" data-status="closed" title="Cancelled, rejected or duplicate">Closed</button>
+          <button class="pill" data-status="all">All</button>
+        </div>
+        <div class="filter-row closed-row" id="closed-row" hidden>
           <button class="pill" data-status="cancelled">Cancelled</button>
           <button class="pill" data-status="rejected">Rejected</button>
           <button class="pill" data-status="duplicate" title="Marked as a duplicate of another referral">Duplicate</button>
         </div>
+        <div class="filter-label">Type and area</div>
         <div class="filter-row">
-          <button class="pill active" data-type="all">Both</button>
-          <button class="pill" data-type="delivery">Delivery</button>
-          <button class="pill" data-type="collection">Collection</button>
+          <span class="pill-seg">
+            <button class="pill active" data-type="all">Both</button>
+            <button class="pill" data-type="delivery">Delivery</button>
+            <button class="pill" data-type="collection">Collection</button>
+          </span>
           <select id="town-filter" title="Filter deliveries by post town"></select>
         </div>
       </div>
@@ -1149,6 +1171,7 @@ let allReferrals   = [];
 let selectedRef    = null;
 let statusFilter   = 'open';
 let typeFilter     = 'all';
+const CLOSED_REASONS = ['cancelled', 'rejected', 'duplicate'];   // the "Closed" pill
 let townFilter = 'all';
 let searchQuery    = '';
 let sortAscending  = false;
@@ -1449,8 +1472,8 @@ function pkRowsHtml() {
   return shown.map(p => `
     <div class="pk-row${pkSel?.id === p.id ? ' sel' : ''}" onclick="pkOpen(${p.id})">
       <span class="pk-code">P${p.code}</span>
-      <span style="flex:1;min-width:0">${esc(p.items)}<br><span class="pk-sub">${esc([p.donor_name, p.source].filter(Boolean).join(' · '))}${p.scheduled_date ? ` · booked ${fmtDay(p.scheduled_date)}` : ''}</span></span>
-      ${PK_TAG[pkState(p)]}
+      <span style="flex:1;min-width:0"><span class="pk-items" title="${esc(p.items)}">${esc(p.items)}</span><span class="pk-sub">${esc([p.donor_name, p.source].filter(Boolean).join(' · '))}${p.scheduled_date ? ` · booked ${fmtDay(p.scheduled_date)}` : ''}</span></span>
+      <span class="pk-side">${PK_TAG[pkState(p)]}<span class="pk-sub">${esc(postTown(p))}</span></span>
     </div>`).join('') || `<div class="pk-row pk-sub" style="cursor:default">${pkQuery ? 'No pickup matches' : 'No active pickups'}</div>`;
 }
 function pkSearch(q) { pkQuery = q; document.getElementById('pk-rows').innerHTML = pkRowsHtml(); }
@@ -2699,6 +2722,7 @@ function matchesStatusFilter(r, status) {
     : statusFilter === 'posted' ? open && !!r.telegram_posted_at
     : statusFilter === 'awaiting-wishlist' ? status === 'awaiting wishlist'
     : statusFilter === 'untriaged' ? isUntriaged(r)
+    : statusFilter === 'closed' ? CLOSED_REASONS.includes(status)
     : status === statusFilter;  // completed | cancelled | rejected | duplicate
 }
 
@@ -2851,7 +2875,7 @@ function updatePillCounts() {
   // Faceted: each row's counts respect the other row's selection, so the
   // selected pills' counts are the intersection shown in the list.
   const statusCounts = { all: 0, untriaged: 0, open: 0, posted: 0, 'awaiting-wishlist': 0,
-                         completed: 0, cancelled: 0, rejected: 0, duplicate: 0 };
+                         completed: 0, closed: 0, cancelled: 0, rejected: 0, duplicate: 0 };
   const typeCounts   = { all: 0, delivery: 0, collection: 0 };
   allReferrals.forEach(r => {
     const status = deriveStatus(r);
@@ -2863,6 +2887,7 @@ function updatePillCounts() {
       if (open && r.telegram_posted_at) statusCounts.posted++;
       if (status === 'awaiting wishlist') statusCounts['awaiting-wishlist']++;
       if (status in statusCounts && !open) statusCounts[status]++;
+      if (CLOSED_REASONS.includes(status)) statusCounts.closed++;
     }
     if (matchesStatusFilter(r, status) && matchesTownFilter(r)) {
       typeCounts.all++;
@@ -2913,9 +2938,17 @@ for (const axis of ['status', 'type']) {
       btn.classList.add('active');
       if (axis === 'status') statusFilter = btn.dataset.status;
       else                   typeFilter   = btn.dataset.type;
+      syncClosedRow();
       renderList();
     });
   });
+}
+// The closed reasons show only while Closed or one of them is chosen, and
+// Closed stays lit while one of them is.
+function syncClosedRow() {
+  const inClosed = statusFilter === 'closed' || CLOSED_REASONS.includes(statusFilter);
+  document.getElementById('closed-row').hidden = !inClosed;
+  document.querySelector('.pill[data-status="closed"]').classList.toggle('active', inClosed);
 }
 
 document.getElementById('sort-btn').addEventListener('click', () => {
