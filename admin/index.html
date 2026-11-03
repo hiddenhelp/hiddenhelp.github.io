@@ -2936,8 +2936,14 @@ for (const axis of ['status', 'type']) {
     btn.addEventListener('click', () => {
       document.querySelectorAll(`.pill[data-${axis}]`).forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      if (axis === 'status') statusFilter = btn.dataset.status;
-      else                   typeFilter   = btn.dataset.type;
+      if (axis === 'status') {
+        statusFilter = btn.dataset.status;
+        // Posted reads oldest first, so what has waited longest is on top
+        // (3 Nov 2026); every other stage newest first. The arrow still flips it.
+        sortAscending = statusFilter === 'posted';
+        document.getElementById('sort-btn').textContent = sortAscending ? '↑' : '↓';
+      }
+      else typeFilter = btn.dataset.type;
       syncClosedRow();
       renderList();
     });
@@ -3069,7 +3075,7 @@ function renderDetail(r) {
   const msFields = [
     { label: 'Referral received',  field: 'received_at',          ts: r.received_at },
     { label: 'Wishlist submitted', field: 'wishlist_submitted_at', ts: r.wishlist_submitted_at },
-    { label: 'Client contacted',   field: 'client_contacted_at',  ts: r.client_contacted_at },
+    // 'Client contacted' (client_contacted_at) dropped 3 Nov 2026: never filled in on any of 938 referrals.
     { label: 'Items gathered',     field: 'gathered_at',           ts: r.gathered_at },
     { label: r.fulfilment_type === 'delivery' ? 'Delivered' : 'Completed', field: 'completed_at', ts: r.completed_at },
   ];
@@ -3592,7 +3598,7 @@ async function patchReferral(id, fields) {
 
 async function saveMilestones(id) {
   const r = allReferrals.find(x => x.id === id);
-  const fields = ['received_at','wishlist_submitted_at','client_contacted_at','gathered_at','completed_at'];
+  const fields = ['received_at','wishlist_submitted_at','gathered_at','completed_at'];
   const update = {};
   for (const f of fields) {
     const el = document.getElementById('ms-' + f);
