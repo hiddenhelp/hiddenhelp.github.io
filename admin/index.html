@@ -2226,9 +2226,12 @@ function pickupLoadHtml(est) {
 }
 const isBigOrder = s => s.pts > VAN_CAPACITY;
 const bigTitle = 'Big order: over a van as the list stands. Trim it in Items for what is in stock';
-// Open deliveries with a wishlist in, gathered or not, that have a map location.
+// Open deliveries with a wishlist in, posted to Telegram, gathered or not, that
+// have a map location. Unposted ones stay off: nobody has been asked to gather
+// them yet (Richard, 5 Nov 2026).
 function planCandidates() {
   return allReferrals.filter(r => r.fulfilment_type === 'delivery' && r.wishlist_submitted_at
+    && r.telegram_posted_at
     && !r.completed_at && !r.cancelled_at && !r.duplicate_of && r.referral_number != null
     && r.clients?.latitude != null && r.clients?.longitude != null);
 }
