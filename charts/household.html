@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Adults and Children</title>
+<!-- Public, embeddable. Reads monthly totals only, through public_household_by_month();
+     the public key it carries cannot read a single referral (RLS). -->
+<style>
+  :root { --bar: #2A6FBF; --bar2: #D0602A; --ink: #1f2933; --muted: #6b7280; --rule: #d9dde3; --bg: #fff; }
+  /* Fills whatever box it is embedded in (Wix sizes the frame, not the page): the chart
+     shrinks to fit the width or the height, whichever runs out first, and never scrolls. */
+  html, body { height: 100%; }
+  body { margin: 0; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column;
+         overflow: hidden; background: var(--bg); color: var(--ink);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+  p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+  #chart { flex: 1; min-height: 0; }
+  svg { display: block; width: 100%; height: 100%; }
+  .key { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+  .key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  svg text { font-family: inherit; }
+</style>
+</head>
+<body>
+<h1>Adults and children in referrals</h1>
+<p id="sub">Loading…</p>
+<div class="key"><span><i style="background:var(--bar)"></i>Adults</span><span><i style="background:var(--bar2)"></i>Children</span></div>
+<div id="chart"></div>
+<script>
+const URL_ = 'https://pokjjlvrtakarcnblljh.supabase.co/rest/v1/rpc/public_household_by_month';
+const KEY = 'sb_publishable_Tciww7ztWF4Nfqve_E_ZHg_TPlLgTlg';   // public by design
+const NAMES = 'JanFebMarAprMayJunJulAugSepOctNovDec';
+const label = k => NAMES.substr((+k.slice(5) - 1) * 3, 3) + ' ' + k.slice(2, 4);
+
+fetch(URL_, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: '{}' })
+  .then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(rows => {
+    const got = new Map(rows.map(r => [r.month, r]));
+    const now = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit' })
+      .format(new Date()).slice(0, 7);
+    const months = [];   // every month from Jan 2026, so a quiet month shows as zero, not a gap
+    for (let y = 2026, m = 1; `${y}-${String(m).padStart(2, '0')}` <= now; m === 12 ? (y++, m = 1) : m++)
+      months.push(`${y}-${String(m).padStart(2, '0')}`);
+    const data = months.map(k => ({ k, a: got.get(k)?.adults || 0, c: got.get(k)?.children || 0 }));
+    const sum = f => data.reduce((s, d) => s + d[f], 0);
+    document.getElementById('sub').textContent =
+      `${sum('a').toLocaleString('en-GB')} adults and ${sum('c').toLocaleString('en-GB')} children in referrals since January 2026, by the month the referral came in. ${label(now)} is the month so far.`;
+
+    const slot = 44, H = 240, top = 20, bottom = 24, W = data.length * slot, bw = 30, gap = 2;
+    const max = Math.max(1, ...data.map(d => d.a + d.c)), plot = H - top - bottom;
+    const bars = data.map((d, i) => {
+      const x = i * slot + (slot - bw) / 2, cur = d.k === now, base = top + plot;
+      const ha = d.a / max * plot, hc = d.c / max * plot, op = cur ? .45 : 1;
+      const seg = (y, h, n, col) => h <= 0 ? '' :
+        `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(h - gap, 1)}" rx="3" fill="${col}" opacity="${op}"/>` +
+        (h >= 14 ? `<text x="${x + bw / 2}" y="${y + Math.min(h - gap, 14) - 3}" text-anchor="middle" font-size="9" fill="#fff">${n}</text>` : '');
+      return `<g><title>${label(d.k)}: ${d.a} adults, ${d.c} children${cur ? ' so far' : ''}</title>
+        ${seg(base - ha, ha, d.a, 'var(--bar)')}${seg(base - ha - hc, hc, d.c, 'var(--bar2)')}
+        <text x="${x + bw / 2}" y="${base - ha - hc - 5}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--ink)">${d.a + d.c}</text>
+        <text x="${x + bw / 2}" y="${H - 7}" text-anchor="middle" font-size="10" fill="var(--muted)">${label(d.k)}</text></g>`;
+    }).join('');
+    document.getElementById('chart').innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Adults and children in referrals per month">
+        <line x1="0" x2="${W}" y1="${top + plot}" y2="${top + plot}" stroke="var(--rule)"/>${bars}</svg>`;
+  })
+  .catch(() => { document.getElementById('sub').textContent = 'The chart could not be loaded just now.'; });
+</script>
+</body>
+</html>
