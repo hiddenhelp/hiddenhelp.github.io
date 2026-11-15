@@ -1763,7 +1763,7 @@ function reportData(refs, aliases, from, to) {
   for (const r of recv) {
     const h = household[at.get(rpMonthOf(r.received_at || r.created_at))];
     h.adults += r.adults_count || 0;
-    h.children += r.children_count || 0;
+    h.children += sumCounts(r.child_ages) ?? r.children_count ?? 0;   // brackets first, as householdStat: children_count is a floor
   }
   for (const r of live) {
     const i = at.get(rpMonthOf(r.completed_at));
