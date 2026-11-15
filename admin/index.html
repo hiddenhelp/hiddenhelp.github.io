@@ -857,6 +857,7 @@ a { color: inherit; text-decoration: none; }
 .rp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 760px) { .rp-pair { grid-template-columns: 1fr; } }
 .rp-range { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); flex-wrap: wrap; }
+#rp-map { height: 460px; border-radius: var(--radius-sm); margin-top: 8px; }
 .rp-range select { padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); font-size: 13px; }
 .rp-note { font-size: 12px; color: var(--text3); margin-top: -6px; }
 .rp-sub { font-size: 12px; color: var(--text3); margin: -6px 0 10px; }
@@ -1885,7 +1886,54 @@ function renderReports() {
       <div class="card"><div class="card-title">Client situation</div>
         <div class="rp-sub">Share of referrals mentioning each situation. A referral can have more than one, so these add to more than 100%.</div>
         ${rpBars(d.crisis, d.total)}</div>
+      <div class="card"><div class="card-title">Where clients live</div>
+        <div class="filter-row" style="margin-bottom:8px"><span class="pill-seg">${[['all', 'All'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) =>
+          `<button class="pill${rpMapKind === k ? ' active' : ''}" onclick="rpMapKind='${k}';renderReports()">${l}</button>`).join('')}</span></div>
+        <div class="rp-sub" id="rp-map-sub"></div>
+        <div id="rp-map"></div></div>
     </div>`;
+  rpRenderMap().catch(e => console.error("map", e));   // a blocked CDN loses the map, not the tab
+}
+
+// One point per referral received in the range: completed, cancelled, or either ("all").
+// Open referrals are in neither. Duplicates never count; a pin-less client is counted apart.
+function rpMapPoints(refs, kind, from, to) {
+  const pts = []; let missing = 0;
+  for (const r of refs) {
+    if (r.duplicate_of) continue;
+    const m = rpMonthOf(r.received_at || r.created_at);
+    if (!m || m < from || m > to) continue;
+    const done = r.completed_at && !r.cancelled_at, gone = !!r.cancelled_at;
+    if (kind === 'completed' ? !done : kind === 'cancelled' ? !gone : !(done || gone)) continue;
+    const c = r.clients;
+    if (c?.latitude != null && c?.longitude != null) pts.push([+c.latitude, +c.longitude]); else missing++;
+  }
+  return { pts, missing };
+}
+
+let rpMap = null, rpMapKind = 'all';
+async function rpRenderMap() {
+  const { pts, missing } = rpMapPoints(allReferrals, rpMapKind, rpFrom, rpTo);
+  const label = { all: 'completed or cancelled', completed: 'completed', cancelled: 'cancelled' }[rpMapKind];
+  document.getElementById('rp-map-sub').textContent = `${pts.length} ${label} referrals received in this range` +
+    (missing ? `, plus ${missing} with no address to map (nearly all collections)` : '') + '. Redder means more referrals.';
+  await planEnsureLeaflet();
+  if (!L.heatLayer) await new Promise((resolve, reject) => {
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js';
+    js.onload = resolve; js.onerror = reject; document.head.appendChild(js);
+  });
+  const el = document.getElementById('rp-map');
+  if (!el) return;
+  const view = rpMap && [rpMap.getCenter(), rpMap.getZoom()];   // keep the zoom across re-renders
+  if (rpMap) rpMap.remove();
+  rpMap = L.map(el, { scrollWheelZoom: false });
+  if (view) rpMap.setView(...view); else rpMap.fitBounds([[49.95, -5.72], [50.93, -4.2]]);   // all of Cornwall
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(rpMap);
+  // ponytail: one sequential ramp, yellow to dark red; leaflet.heat's default is a rainbow.
+  L.heatLayer(pts, { radius: 16, blur: 18, max: 4, maxZoom: 10, minOpacity: .25,
+    gradient: { .2: '#fed976', .4: '#feb24c', .6: '#fd8d3c', .8: '#e31a1c', 1: '#800026' } }).addTo(rpMap);
 }
 
 async function rpSetAlias(i, value) {
