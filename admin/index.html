@@ -852,7 +852,10 @@ a { color: inherit; text-decoration: none; }
 /* ── Reports ───────────────────────────────────────────────── */
 /* Blue/orange passed the dataviz palette check (CVD ΔE 22.6), 15 Nov 2026. */
 .rp { max-width: 900px; display: grid; gap: 12px; --rp-a: #2A6FBF; --rp-b: #D0602A; }
-.rp > * { min-width: 0; }   /* else a wide chart widens its card instead of scrolling */
+.rp { max-width: 1000px; }
+.rp > *, .rp-pair > * { min-width: 0; }   /* else a wide chart widens its card instead of scrolling */
+.rp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .rp-pair { grid-template-columns: 1fr; } }
 .rp-range { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); flex-wrap: wrap; }
 .rp-range select { padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); font-size: 13px; }
 .rp-note { font-size: 12px; color: var(--text3); margin-top: -6px; }
@@ -1731,7 +1734,6 @@ async function pkRemove(pickedUp) {
 // does on the sheet), then through organisation_aliases, which admin edits here.
 let orgAliases = new Map();      // orgKey -> name shown
 let rpFrom = '2026-01', rpTo = null, rpSpell = [], rpSpellOpen = false;
-const RP_TOP_ORGS = 20;         // the rest fold into "Other"
 
 function orgKey(s) {
   return String(s || '').trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").toLowerCase();
@@ -1747,7 +1749,7 @@ function rpMonths(from, to) {
   }
   return out;
 }
-const rpMonthLabel = k => new Date(k + '-15').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+const rpMonthLabel = k => 'JanFebMarAprMayJunJulAugSepOctNovDec'.substr((+k.slice(5) - 1) * 3, 3) + ' ' + k.slice(2, 4);
 
 // Pure: everything the four charts show, for the months from..to inclusive.
 function reportData(refs, aliases, from, to) {
@@ -1798,9 +1800,10 @@ function reportData(refs, aliases, from, to) {
 // Vertical bars, one per month, stacked when there are two series. Every value
 // is printed, as on the sheet: these are counts people quote, not trends.
 function rpColumns(rows, series) {
-  const slot = 58, H = 270, top = 22, bottom = 26, W = Math.max(rows.length * slot, 300);
+  // 40px a month fits eleven months in half the width, where the two sit side by side.
+  const slot = 40, H = 270, top = 22, bottom = 26, W = Math.max(rows.length * slot, 240);
   const max = Math.max(1, ...rows.map(r => series.reduce((s, x) => s + r[x.key], 0)));
-  const scale = (H - top - bottom) / max, bw = 36;
+  const scale = (H - top - bottom) / max, bw = 28;
   let out = `<line x1="0" x2="${W}" y1="${H - bottom}" y2="${H - bottom}" stroke="var(--border)"/>`;
   rows.forEach((r, i) => {
     const x = i * slot + (slot - bw) / 2;
@@ -1818,7 +1821,7 @@ function rpColumns(rows, series) {
       y -= h;
     });
     out += `<text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" font-size="11" fill="var(--text2)" font-weight="600">${total}</text>`;
-    out += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text3)">${esc(rpMonthLabel(r.month))}</text></g>`;
+    out += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--text3)">${esc(rpMonthLabel(r.month))}</text></g>`;
   });
   return `<div class="rp-scroll"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">${out}</svg></div>`;
 }
@@ -1849,8 +1852,6 @@ function renderReports() {
   rpSpell = d.spellings;
   const opts = sel => rpMonths('2026-01', now).map(k =>
     `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(rpMonthLabel(k))}</option>`).join('');
-  const top = d.orgs.slice(0, RP_TOP_ORGS), rest = d.orgs.slice(RP_TOP_ORGS);
-  if (rest.length) top.push({ label: `Other (${rest.length} organisations)`, n: rest.reduce((s, r) => s + r.n, 0) });
   const people = d.household.reduce((s, h) => s + h.adults + h.children, 0);
   const names = [...new Set(d.spellings.map(s => s.name))];
 
@@ -1860,16 +1861,19 @@ function renderReports() {
         to <select onchange="rpTo=this.value;renderReports()">${opts(rpTo)}</select></div></div>
     <div class="rp">
       <div class="rp-note">${d.total} referrals received in this range. Cancelled and duplicate referrals are not counted. 2025 is in the sheet.</div>
+      <div class="rp-pair">
+      <div class="card"><div class="card-title">Referrals completed</div>
+        <div class="rp-sub">${d.completed.reduce((s, c) => s + c.n, 0)} completed, by the month they were completed</div>
+        <div class="rp-legend">&nbsp;</div>
+        ${rpColumns(d.completed, [{ key: 'n', label: 'Completed', color: 'var(--rp-a)' }])}</div>
       <div class="card"><div class="card-title">Adults and children in referrals</div>
         <div class="rp-sub">${people} people, by the month the referral came in</div>
         <div class="rp-legend"><span><i style="background:var(--rp-a)"></i>Adults</span><span><i style="background:var(--rp-b)"></i>Children</span></div>
         ${rpColumns(d.household, [{ key: 'adults', label: 'Adults', color: 'var(--rp-a)' }, { key: 'children', label: 'Children', color: 'var(--rp-b)' }])}</div>
-      <div class="card"><div class="card-title">Referrals completed</div>
-        <div class="rp-sub">${d.completed.reduce((s, c) => s + c.n, 0)} completed, by the month they were completed</div>
-        ${rpColumns(d.completed, [{ key: 'n', label: 'Completed', color: 'var(--rp-a)' }])}</div>
+      </div>
       <div class="card"><div class="card-title">Referring organisation</div>
         <div class="rp-sub">Share of the ${d.total} referrals</div>
-        ${rpBars(top, d.total)}
+        ${rpBars(d.orgs, d.total)}
         <details class="rp-spell"${rpSpellOpen ? ' open' : ''} ontoggle="rpSpellOpen=this.open">
           <summary>Group spellings (${d.spellings.length} as typed)</summary>
           <div class="rp-sub" style="margin:8px 0">Type the name a spelling should count as. Clear it to count the spelling on its own.</div>
