@@ -8,11 +8,16 @@
      the public key it carries cannot read a single referral (RLS). -->
 <style>
   :root { --bar: #2A6FBF; --ink: #1f2933; --muted: #6b7280; --rule: #d9dde3; --bg: #fff; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink);
+  /* Fills whatever box it is embedded in (Wix sizes the frame, not the page): the chart
+     shrinks to fit the width or the height, whichever runs out first, and never scrolls. */
+  html, body { height: 100%; }
+  body { margin: 0; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column;
+         overflow: hidden; background: var(--bg); color: var(--ink);
          font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px; }
-  p { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
-  svg { display: block; width: 100%; height: auto; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+  p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+  #chart { flex: 1; min-height: 0; }
+  svg { display: block; width: 100%; height: 100%; }
   svg text { font-family: inherit; }
 </style>
 </head>
