@@ -848,6 +848,32 @@ a { color: inherit; text-decoration: none; }
 
 /* ── Volunteers view ───────────────────────────────────────── */
 .volunteers-view { flex: 1; overflow-y: auto; padding: 24px; }
+
+/* ── Reports ───────────────────────────────────────────────── */
+/* Blue/orange passed the dataviz palette check (CVD ΔE 22.6), 15 Nov 2026. */
+.rp { max-width: 900px; display: grid; gap: 12px; --rp-a: #2A6FBF; --rp-b: #D0602A; }
+.rp > * { min-width: 0; }   /* else a wide chart widens its card instead of scrolling */
+.rp-range { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); flex-wrap: wrap; }
+.rp-range select { padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); font-size: 13px; }
+.rp-note { font-size: 12px; color: var(--text3); margin-top: -6px; }
+.rp-sub { font-size: 12px; color: var(--text3); margin: -6px 0 10px; }
+.rp-scroll { overflow-x: auto; }
+.rp-scroll svg { display: block; font-family: var(--font); }
+.rp-legend { display: flex; gap: 14px; font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+.rp-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.rp-bar-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 3px 0; }
+.rp-bar-label { width: 34%; flex-shrink: 0; text-align: right; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-bar-track { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rp-bar { height: 16px; background: var(--rp-a); border-radius: 0 4px 4px 0; min-width: 2px; }
+.rp-bar-val { font-size: 12px; color: var(--text2); white-space: nowrap; }
+@media (max-width: 600px) {
+  .rp-bar-row { flex-wrap: wrap; gap: 2px 10px; padding: 4px 0; }
+  .rp-bar-label { width: 100%; text-align: left; }
+}
+.rp-spell { margin-top: 12px; font-size: 13px; }
+.rp-spell summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+.rp-spell input { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; }
+.rp-spell .mapped { color: var(--text3); font-size: 11px; }
 .vol-view-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; max-width: 900px; }
 .vol-view-header h2 { font-size: 18px; font-weight: 600; flex: 1; }
 .vol-table-wrap { max-width: 900px; overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
@@ -1100,6 +1126,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
     <button id="nav-availability" class="app-tab" onclick="setView('availability')">Availability</button>
     <button id="nav-volunteers" class="app-tab" onclick="setView('volunteers')">Volunteers</button>
     <button id="nav-pickups" class="app-tab" onclick="setView('pickups')">Pickups</button>
+    <button id="nav-reports" class="app-tab" onclick="setView('reports')">Reports</button>
   </nav>
   <div class="app-body">
 
@@ -1156,6 +1183,7 @@ body.mobile .login-card { padding: 40px 26px; margin: 16px; }
     <!-- Planner -->
     <div id="planner-view" class="volunteers-view" style="display:none"></div>
     <div id="pickups-view" class="volunteers-view" style="display:none"></div>
+    <div id="reports-view" class="volunteers-view" style="display:none"></div>
 
   </div>
 </div>
@@ -1692,6 +1720,180 @@ async function pkRemove(pickedUp) {
 }
 
 // ── Volunteers view ─────────────────────────────────────────
+// ── Reports view ────────────────────────────────────────────
+// Live versions of the referral sheet's charts (built 15 Nov 2026), worked out
+// in the browser from allReferrals, which is refetched each time the tab opens.
+// Ruled 15 Nov 2026: cancelled and duplicate referrals are not counted; a month
+// is the month a referral was RECEIVED, except Completed, which is the month it
+// was completed; the database holds 2026 onward (23 referrals from 2025), so the
+// range starts there and 2025 stays in the sheet.
+// Organisations are free text: grouped case-insensitively (as TextHygiene.gs
+// does on the sheet), then through organisation_aliases, which admin edits here.
+let orgAliases = new Map();      // orgKey -> name shown
+let rpFrom = '2026-01', rpTo = null, rpSpell = [], rpSpellOpen = false;
+const RP_TOP_ORGS = 20;         // the rest fold into "Other"
+
+function orgKey(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ').replace(/[‘’]/g, "'").toLowerCase();
+}
+const rpMonthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit' });
+const rpMonthOf = ts => ts ? rpMonthFmt.format(new Date(ts)).slice(0, 7) : '';
+function rpMonths(from, to) {
+  const out = [];
+  let [y, m] = from.split('-').map(Number);
+  for (let k = from; k <= to; k = y + '-' + String(m).padStart(2, '0')) {
+    out.push(k);
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+const rpMonthLabel = k => new Date(k + '-15').toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+
+// Pure: everything the four charts show, for the months from..to inclusive.
+function reportData(refs, aliases, from, to) {
+  const months = rpMonths(from, to);
+  const at = new Map(months.map((k, i) => [k, i]));
+  const live = refs.filter(r => !r.cancelled_at && !r.duplicate_of);
+  const recv = live.filter(r => at.has(rpMonthOf(r.received_at || r.created_at)));
+  const household = months.map(month => ({ month, adults: 0, children: 0 }));
+  const completed = months.map(month => ({ month, n: 0 }));
+  for (const r of recv) {
+    const h = household[at.get(rpMonthOf(r.received_at || r.created_at))];
+    h.adults += r.adults_count || 0;
+    h.children += r.children_count || 0;
+  }
+  for (const r of live) {
+    const i = at.get(rpMonthOf(r.completed_at));
+    if (i != null) completed[i].n++;
+  }
+
+  const groups = new Map();
+  for (const r of recv) {
+    const raw = String(r.referrers?.organisation || '').trim().replace(/\s+/g, ' ');
+    const key = orgKey(raw);
+    const g = groups.get(key) || { key, n: 0, typed: new Map() };
+    g.n++;
+    g.typed.set(raw, (g.typed.get(raw) || 0) + 1);
+    groups.set(key, g);
+  }
+  // A spelling that IS an alias's target ("cornwall housing" for "Cornwall Housing")
+  // joins it without an alias of its own.
+  const targets = new Map([...aliases.values()].map(n => [orgKey(n), n]));
+  const spellings = [...groups.values()].map(g => {
+    const plain = [...g.typed].sort((a, b) => b[1] - a[1])[0][0] || '(none given)';
+    return { key: g.key, n: g.n, typed: [...g.typed.keys()], plain,
+             name: aliases.get(g.key) || targets.get(g.key) || plain, mapped: aliases.has(g.key) };
+  }).sort((a, b) => a.name.localeCompare(b.name) || b.n - a.n);
+  const orgCount = new Map();
+  for (const s of spellings) orgCount.set(s.name, (orgCount.get(s.name) || 0) + s.n);
+  const orgs = [...orgCount].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
+
+  const crisisCount = new Map();
+  for (const r of recv) for (const c of new Set(crisisNames(r))) crisisCount.set(c, (crisisCount.get(c) || 0) + 1);
+  const crisis = [...crisisCount].map(([label, n]) => ({ label, n })).sort((a, b) => b.n - a.n);
+
+  return { months, household, completed, orgs, spellings, crisis, total: recv.length };
+}
+
+// Vertical bars, one per month, stacked when there are two series. Every value
+// is printed, as on the sheet: these are counts people quote, not trends.
+function rpColumns(rows, series) {
+  const slot = 58, H = 270, top = 22, bottom = 26, W = Math.max(rows.length * slot, 300);
+  const max = Math.max(1, ...rows.map(r => series.reduce((s, x) => s + r[x.key], 0)));
+  const scale = (H - top - bottom) / max, bw = 36;
+  let out = `<line x1="0" x2="${W}" y1="${H - bottom}" y2="${H - bottom}" stroke="var(--border)"/>`;
+  rows.forEach((r, i) => {
+    const x = i * slot + (slot - bw) / 2;
+    let y = H - bottom, total = 0;
+    const tip = [rpMonthLabel(r.month) + ':', ...series.map(s => r[s.key] + ' ' + s.label.toLowerCase())].join(' ');
+    out += `<g><title>${esc(tip)}</title>`;
+    series.forEach((s, j) => {
+      const v = r[s.key], h = v * scale;
+      total += v;
+      if (!v) return;
+      const gap = j ? 2 : 0;    // 2px surface gap between stacked segments
+      out += `<rect x="${x}" y="${y - h}" width="${bw}" height="${Math.max(h - gap, 1)}" rx="${j === series.length - 1 ? 4 : 1}" fill="${s.color}"/>`;
+      if (series.length > 1 && h >= 13)
+        out += `<text x="${x + bw / 2}" y="${y - h / 2 + 4}" text-anchor="middle" font-size="11" fill="#fff">${v}</text>`;
+      y -= h;
+    });
+    out += `<text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" font-size="11" fill="var(--text2)" font-weight="600">${total}</text>`;
+    out += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text3)">${esc(rpMonthLabel(r.month))}</text></g>`;
+  });
+  return `<div class="rp-scroll"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">${out}</svg></div>`;
+}
+
+// Horizontal bars, longest first; the value reads "41.8% (780)" as on the sheet.
+function rpBars(rows, total) {
+  const max = Math.max(1, ...rows.map(r => r.n));
+  return rows.map(r => `<div class="rp-bar-row" title="${esc(r.label)}: ${r.n}">
+    <span class="rp-bar-label">${esc(r.label)}</span>
+    <span class="rp-bar-track"><span class="rp-bar" style="width:${(r.n / max * 85).toFixed(1)}%"></span>
+      <span class="rp-bar-val">${total ? (r.n / total * 100).toFixed(1) : 0}% (${r.n})</span></span></div>`).join('')
+    || '<div class="rp-sub">Nothing in this range.</div>';
+}
+
+async function loadReports() {
+  const el = document.getElementById('reports-view');
+  if (!el.innerHTML) el.innerHTML = '<div class="loading">Loading reports…</div>';
+  const [{ data, error }] = await Promise.all([db.from('organisation_aliases').select('alias, name'), loadReferrals()]);
+  if (error) { el.innerHTML = `<div class="loading">Failed to load: ${esc(error.message)}</div>`; return; }
+  orgAliases = new Map((data || []).map(a => [a.alias, a.name]));
+  renderReports();
+}
+
+function renderReports() {
+  const now = rpMonthOf(new Date());
+  if (!rpTo) rpTo = now;
+  const d = reportData(allReferrals, orgAliases, rpFrom, rpTo);
+  rpSpell = d.spellings;
+  const opts = sel => rpMonths('2026-01', now).map(k =>
+    `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(rpMonthLabel(k))}</option>`).join('');
+  const top = d.orgs.slice(0, RP_TOP_ORGS), rest = d.orgs.slice(RP_TOP_ORGS);
+  if (rest.length) top.push({ label: `Other (${rest.length} organisations)`, n: rest.reduce((s, r) => s + r.n, 0) });
+  const people = d.household.reduce((s, h) => s + h.adults + h.children, 0);
+  const names = [...new Set(d.spellings.map(s => s.name))];
+
+  document.getElementById('reports-view').innerHTML = `
+    <div class="vol-view-header"><h2>Reports</h2>
+      <div class="rp-range">From <select onchange="rpFrom=this.value;renderReports()">${opts(rpFrom)}</select>
+        to <select onchange="rpTo=this.value;renderReports()">${opts(rpTo)}</select></div></div>
+    <div class="rp">
+      <div class="rp-note">${d.total} referrals received in this range. Cancelled and duplicate referrals are not counted. 2025 is in the sheet.</div>
+      <div class="card"><div class="card-title">Adults and children in referrals</div>
+        <div class="rp-sub">${people} people, by the month the referral came in</div>
+        <div class="rp-legend"><span><i style="background:var(--rp-a)"></i>Adults</span><span><i style="background:var(--rp-b)"></i>Children</span></div>
+        ${rpColumns(d.household, [{ key: 'adults', label: 'Adults', color: 'var(--rp-a)' }, { key: 'children', label: 'Children', color: 'var(--rp-b)' }])}</div>
+      <div class="card"><div class="card-title">Referrals completed</div>
+        <div class="rp-sub">${d.completed.reduce((s, c) => s + c.n, 0)} completed, by the month they were completed</div>
+        ${rpColumns(d.completed, [{ key: 'n', label: 'Completed', color: 'var(--rp-a)' }])}</div>
+      <div class="card"><div class="card-title">Referring organisation</div>
+        <div class="rp-sub">Share of the ${d.total} referrals</div>
+        ${rpBars(top, d.total)}
+        <details class="rp-spell"${rpSpellOpen ? ' open' : ''} ontoggle="rpSpellOpen=this.open">
+          <summary>Group spellings (${d.spellings.length} as typed)</summary>
+          <div class="rp-sub" style="margin:8px 0">Type the name a spelling should count as. Clear it to count the spelling on its own.</div>
+          <datalist id="rp-org-names">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+          <div class="vol-table-wrap"><table class="vol-table"><tr><th>Typed as</th><th>Referrals</th><th>Counts as</th></tr>
+          ${d.spellings.map((s, i) => `<tr><td>${s.typed.map(esc).join('<br>')}</td><td>${s.n}</td>
+            <td><input list="rp-org-names" value="${esc(s.mapped ? s.name : '')}" placeholder="${esc(s.plain)}" onchange="rpSetAlias(${i}, this.value)"></td></tr>`).join('')}
+          </table></div></details></div>
+      <div class="card"><div class="card-title">Client situation</div>
+        <div class="rp-sub">Share of referrals mentioning each situation. A referral can have more than one, so these add to more than 100%.</div>
+        ${rpBars(d.crisis, d.total)}</div>
+    </div>`;
+}
+
+async function rpSetAlias(i, value) {
+  const s = rpSpell[i], name = value.trim().replace(/\s+/g, ' ');
+  const { error } = name
+    ? await db.from('organisation_aliases').upsert({ alias: s.key, name })
+    : await db.from('organisation_aliases').delete().eq('alias', s.key);
+  if (error) { alert('Could not save: ' + error.message); return; }
+  if (name) orgAliases.set(s.key, name); else orgAliases.delete(s.key);
+  renderReports();
+}
+
 function setView(view) {
   currentView = view;
   const isRef = view === 'referrals';
@@ -1701,8 +1903,10 @@ function setView(view) {
   document.getElementById('availability-view').style.display = view === 'availability' ? 'block' : 'none';
   document.getElementById('planner-view').style.display = view === 'planner' ? 'block' : 'none';
   document.getElementById('pickups-view').style.display = view === 'pickups' ? 'block' : 'none';
-  for (const v of ['referrals', 'volunteers', 'availability', 'planner', 'pickups'])
+  document.getElementById('reports-view').style.display = view === 'reports' ? 'block' : 'none';
+  for (const v of ['referrals', 'volunteers', 'availability', 'planner', 'pickups', 'reports'])
     document.getElementById('nav-' + v).classList.toggle('active', v === view);
+  if (view === 'reports') loadReports();
   if (view === 'volunteers') { editingVolId = null; loadAllVolunteers(); }
   if (view === 'availability') loadAvailability();
   if (view === 'planner') openPlanner();
