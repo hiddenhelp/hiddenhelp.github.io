@@ -3935,40 +3935,86 @@ function referrerEmailField(r) {
     list.map(e => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join('<br>')}</span></div>`;
 }
 
-// Edits the referrer record, which every referral of theirs shares, and this
-// referral's email (what the wishlist email pre-ticks). Built 18 Nov 2026 so
-// admin can correct a referrer she knows is wrong. A later form from the same
-// person is still matched by phone and name, so keep the name recognisable.
+// Every address held for this referrer, junk included so it can be fixed:
+// this referral's form, the saved one, other referrals' forms, admin-added.
+function referrerAllAddresses(r) {
+  const ref = r.referrers || {};
+  const forms = allReferrals.filter(x => r.referrer_id != null && x.referrer_id === r.referrer_id && x.id !== r.id)
+    .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')))
+    .map(x => x.referrer_email);
+  const out = [];
+  for (let e of [r.referrer_email, ref.email, ...forms, ...(ref.extra_emails || [])]) {
+    e = String(e || '').trim();
+    if (e && !out.some(x => x.toLowerCase() === e.toLowerCase())) out.push(e);
+  }
+  return out;
+}
+
+// One referrer record is shared by all their referrals, so everything here
+// applies to all of them (18 Nov 2026). Each address is a box: change it to
+// correct it wherever it appears, clear it to stop it being offered, or type
+// a new one in the blank box at the end. A later form from the same person is
+// still matched by phone and name, so keep the name recognisable.
 function referrerEdit(r) {
   const ref = r.referrers || {};
   const others = allReferrals.filter(x => x.referrer_id === r.referrer_id && x.id !== r.id).length;
+  const who = esc(ref.name || 'This referrer');
   return `
     <div class="vol-field"><label>Name</label><input class="vol-input" id="re-name" value="${esc(ref.name || '')}"></div>
     <div class="vol-field"><label>Organisation</label><input class="vol-input" id="re-org" value="${esc(ref.organisation || '')}"></div>
     <div class="vol-field"><label>Phone</label><input class="vol-input" id="re-phone" value="${esc(ref.phone || '')}"></div>
-    <div class="vol-field"><label>Email</label><input class="vol-input" id="re-email" type="email" value="${esc(r.referrer_email || ref.email || '')}"></div>
-    ${others ? `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Name, organisation and phone also change on this referrer's ${others} other referral${others > 1 ? 's' : ''}. The email changes on this referral and becomes their main address.</div>` : ''}
+    <div class="vol-field"><label>Email addresses <span style="font-weight:400;color:var(--text3)">(clear a box to remove it)</span></label>
+      ${referrerAllAddresses(r).map(e => `<input class="vol-input re-addr" type="email" data-old="${esc(e)}" value="${esc(e)}" style="margin-bottom:4px${looksLikeEmail(e) ? '' : ';border-color:var(--red)'}">`).join('')}
+      <input class="vol-input re-addr" type="email" data-old="" placeholder="Add an address"></div>
+    ${others ? `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">${who} also referred ${others} other client${others > 1 ? 's' : ''}. Changes here apply there too.</div>` : ''}
     <div class="edit-actions">
       <button class="btn-save-edit" onclick="saveReferrer(${r.id})">Save</button>
       <button class="btn-cancel-edit" onclick="toggleEdit('referrer')">Cancel</button>
     </div>`;
 }
 
+// What the address boxes ask for: { changes: [[old, new]], added: [..] },
+// new '' meaning removed. Pure, for test_dashboard.js.
+function referrerAddressEdits(boxes) {
+  const changes = [], added = [];
+  for (const { old, now } of boxes) {
+    const v = now.trim();
+    if (!old) { if (v) added.push(v); }
+    else if (v !== old) changes.push([old, v]);
+  }
+  return { changes, added };
+}
+
 async function saveReferrer(id) {
   const r = allReferrals.find(x => x.id === id);
   if (!r?.referrer_id) { alert('This referral has no referrer record to edit.'); return; }
   const val = k => document.getElementById('re-' + k)?.value.trim() ?? '';
-  const name = val('name'), email = val('email');
+  const name = val('name');
   if (!name) { alert('The referrer needs a name.'); return; }
-  if (email && !looksLikeEmail(email)) { alert('"' + email + '" is not an email address.'); return; }
+  const { changes, added } = referrerAddressEdits([...document.querySelectorAll('.re-addr')]
+    .map(i => ({ old: i.dataset.old, now: i.value })));
+  const bad = [...changes.map(c => c[1]), ...added].filter(e => e && !looksLikeEmail(e));
+  if (bad.length) { alert('Not an email address: ' + bad.join(', ')); return; }
+
+  const ref = r.referrers || {};
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  const swap = e => { const c = changes.find(c => same(c[0], e)); return c ? (c[1] || null) : e; };
+  // Every referral of theirs whose form gave a changed address.
+  for (const [old, now] of changes) {
+    const ids = allReferrals.filter(x => x.referrer_id === r.referrer_id && same(x.referrer_email, old)).map(x => x.id);
+    if (!ids.length) continue;
+    const { error } = await db.from('referrals').update({ referrer_email: now || null }).in('id', ids);
+    if (error) { alert('Save failed: ' + error.message); return; }
+  }
+  const extras = [...(ref.extra_emails || []).map(swap), ...added]
+    .filter((e, i, a) => e && a.findIndex(x => same(x, e)) === i);
   const { error } = await db.from('referrers').update({
     name, organisation: val('org') || null, phone: normalisePhone(val('phone')),
-    ...(email ? { email } : {}),
+    email: swap(ref.email) ?? null, extra_emails: extras,
   }).eq('id', r.referrer_id);
   if (error) { alert('Save failed: ' + error.message); return; }
   editingSection = null;
-  await patchReferral(id, { referrer_email: email || null });
-  await loadReferrals();   // the referrer row is shared by their other referrals
+  await loadReferrals();   // the referrer and their other referrals changed too
 }
 
 // Word-level, like wlSamePerson_ in wishlist_ingest.gs: a respelling keeps a
@@ -4583,7 +4629,7 @@ function wishlistRequestEmail(r) {
 
 // Every address this referral's referrer has given: this referral's own form
 // first, then the referrer's saved one, then their other referrals', newest
-// first. Real addresses only — #1760's referrer had typed her name in the
+// first, then any admin added on the Referrer card. Real addresses only — #1760's referrer had typed her name in the
 // email box. Same list, same order, as wlRequestAddresses_ in DraftEmail.gs,
 // which refuses any address not on it. Ruled 18 Nov 2026: admin picks.
 const looksLikeEmail = s => /^[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}$/i.test(String(s || '').trim());
@@ -4593,7 +4639,7 @@ function wishlistRequestAddresses(r) {
     .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')))
     .map(x => x.referrer_email);
   const out = [];
-  for (let e of [r.referrer_email, r.referrers?.email, ...others]) {
+  for (let e of [r.referrer_email, r.referrers?.email, ...others, ...(r.referrers?.extra_emails || [])]) {
     e = String(e || '').trim();
     if (looksLikeEmail(e) && !out.some(x => x.toLowerCase() === e.toLowerCase())) out.push(e);
   }
