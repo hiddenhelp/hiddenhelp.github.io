@@ -940,6 +940,7 @@ a { color: inherit; text-decoration: none; }
 .plan-big { color: var(--red); font-weight: 700; }
 .btn-link { font-size: 12px; color: var(--text3); text-decoration: underline; padding: 4px 2px; }
 .btn-link:hover { color: var(--text); }
+.wl-choose-to label { display: block; font-size: 13px; margin: 4px 0; overflow-wrap: anywhere; }
 .wl-mark-sent { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
 .wl-mark-sent input { font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font-family: var(--font); }
 .plan-prompt { display: inline-flex; gap: 6px; align-items: center; }
@@ -3512,7 +3513,7 @@ function renderDetail(r) {
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>${wishlistChooseToHtml(r)}${wishlistMarkSentHtml(r)}` : ''}
+        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>${wishlistMarkSentHtml(r)}` : ''}
         <!-- Ruled 15 Sep 2026: an unnumbered referral is never postable, and the
              button should not appear at all rather than appear and refuse. The
              gate covers Email and PDF too, not just Telegram — all three resolve
@@ -3538,6 +3539,7 @@ function renderDetail(r) {
         ${householdStat('Children', sumCounts(r.child_ages), r.children_count, '')}
       </div>
 
+      ${wishlistChooseToHtml(r)}
       ${(!r.cancelled_at && !r.completed_at) ? `<div style="font-size:12px;color:var(--text3);margin-top:-6px;">Mark gathered/completed via Telegram bot, or use the milestone edit below.</div>` : ''}
 
       <div class="three-col">
@@ -4603,10 +4605,12 @@ function wishlistRequestAddresses(r) {
 function wishlistChooseToHtml(r) {
   if (!choosingWlTo) return '';
   const list = wishlistRequestAddresses(r);
-  return `<span class="wl-mark-sent">Send to:
-    ${list.map((e, i) => `<label><input type="checkbox" class="wl-to" value="${esc(e)}"${i ? '' : ' checked'}> ${esc(e)}</label>`).join('')}
-    <button class="btn" onclick="sendWishlistRequest(true)">Send</button>
-    <button class="btn-link" onclick="choosingWlTo = false; renderDetail(selectedRef)">Cancel</button></span>`;
+  return `<div class="card wl-choose-to"><div class="card-title">Send the wishlist email to</div>
+    ${list.map((e, i) => `<label><input type="checkbox" class="wl-to" value="${esc(e)}"${i ? '' : ' checked'}> ${esc(e)}${i || !looksLikeEmail(r.referrer_email) ? '' : ' <span style="color:var(--text3)">(this referral\'s form)</span>'}</label>`).join('')}
+    <div class="edit-actions">
+      <button class="btn-save-edit" onclick="sendWishlistRequest(true)">Send</button>
+      <button class="btn-cancel-edit" onclick="choosingWlTo = false; renderDetail(selectedRef)">Cancel</button>
+    </div></div>`;
 }
 
 // For wishlist links sent by hand before the button could send (before
