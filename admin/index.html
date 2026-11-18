@@ -1218,6 +1218,7 @@ let showWishlist    = false;
 let editingWishlist = false;
 let showWlNote      = false;
 let markingWlSent   = false;   // the "Already sent? Mark it" date picker is open
+let choosingWlTo    = false;   // the wishlist email's address tick boxes are open
 let showDuplicateSearch = false;
 let duplicateQuery = '';
 let volunteers     = [];
@@ -3269,6 +3270,7 @@ function selectReferral(r) {
   showWishlist    = false;
   showWlNote      = false;
   markingWlSent   = false;
+  choosingWlTo    = false;
   renderList();
   renderDetail(r);
   if (document.body.classList.contains('mobile')) {
@@ -3510,7 +3512,7 @@ function renderDetail(r) {
         <p>${esc(ref.organisation || ref.name || '')}${ref.name && ref.organisation ? ' · ' + esc(ref.name) : ''} · referred ${fmtDate(r.received_at || r.created_at)}</p>
       </div>
       <div class="detail-actions">
-        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>${wishlistMarkSentHtml(r)}` : ''}
+        ${!r.wishlist_submitted_at && !r.cancelled_at && r.referral_number != null ? `<button class="btn${r.wishlist_request_sent_at ? ' btn-done' : ''}" id="wishlist-link-btn" onclick="sendWishlistRequest()" title="${r.wishlist_request_sent_at ? 'Wishlist email sent ' + fmtDateTime(r.wishlist_request_sent_at) + ' — click to send again' : "Email the referrer the client's wishlist link"}">${r.wishlist_request_sent_at ? ICONS.check + `<span>Wishlist email sent ${fmtDate(r.wishlist_request_sent_at)}</span>` : ICONS.mail + '<span>Send wishlist email</span>'}</button>${wishlistChooseToHtml(r)}${wishlistMarkSentHtml(r)}` : ''}
         <!-- Ruled 15 Sep 2026: an unnumbered referral is never postable, and the
              button should not appear at all rather than appear and refuse. The
              gate covers Email and PDF too, not just Telegram — all three resolve
@@ -3581,12 +3583,16 @@ function renderDetail(r) {
         </div>`}
 
         <div class="card">
-          <div class="card-title">Referrer</div>
+          <div class="card-title-row">
+            <div class="card-title">Referrer</div>
+            ${r.referrer_id ? `<button class="btn-edit-card${editingSection==='referrer'?' active':''}" onclick="toggleEdit('referrer')">${editingSection==='referrer'?'Cancel':'Edit'}</button>` : ''}
+          </div>
+          ${editingSection === 'referrer' ? referrerEdit(r) : `
           <div class="field"><label>Name</label><span>${esc(ref.name || '—')}</span></div>
           ${ref.organisation ? `<div class="field"><label>Organisation</label><span>${esc(ref.organisation)}</span></div>` : ''}
           ${ref.phone ? `<div class="field"><label>Phone</label><span>${fmtPhone(ref.phone)}${phoneWarn(ref.phone)}</span></div>` : ''}
-          ${ref.email ? `<div class="field"><label>Email</label><a href="mailto:${esc(ref.email)}">${esc(ref.email)}</a></div>` : ''}
-          ${referrerNotes ? `<div class="field"><label>Referrer notes</label><span style="white-space:pre-wrap">${esc(referrerNotes)}</span></div>` : ''}
+          ${referrerEmailField(r)}
+          ${referrerNotes ? `<div class="field"><label>Referrer notes</label><span style="white-space:pre-wrap">${esc(referrerNotes)}</span></div>` : ''}`}
         </div>
       </div>
 
@@ -3912,6 +3918,55 @@ function clientEdit(r, notes) {
       <button class="btn-save-edit" onclick="saveClient(${r.id})">Save</button>
       <button class="btn-cancel-edit" onclick="toggleEdit('client')">Cancel</button>
     </div>`;
+}
+
+// The referrer's addresses, this referral's first, as the wishlist email
+// offers them. Text typed in the email box that is not an address (#1760: a
+// name) is shown in red so admin can see it and correct it with Edit.
+function referrerEmailField(r) {
+  const list = wishlistRequestAddresses(r);
+  const typed = String(r.referrer_email || '').trim();
+  const junk = typed && !looksLikeEmail(typed)
+    ? `<div style="color:var(--red)">${ICONS.warn} Not an email address: "${esc(typed)}"</div>` : '';
+  if (!list.length && !junk) return '';
+  return `<div class="field"><label>Email${list.length > 1 ? 's' : ''}</label><span>${junk}${
+    list.map(e => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join('<br>')}</span></div>`;
+}
+
+// Edits the referrer record, which every referral of theirs shares, and this
+// referral's email (what the wishlist email pre-ticks). Built 18 Nov 2026 so
+// admin can correct a referrer she knows is wrong. A later form from the same
+// person is still matched by phone and name, so keep the name recognisable.
+function referrerEdit(r) {
+  const ref = r.referrers || {};
+  const others = allReferrals.filter(x => x.referrer_id === r.referrer_id && x.id !== r.id).length;
+  return `
+    <div class="vol-field"><label>Name</label><input class="vol-input" id="re-name" value="${esc(ref.name || '')}"></div>
+    <div class="vol-field"><label>Organisation</label><input class="vol-input" id="re-org" value="${esc(ref.organisation || '')}"></div>
+    <div class="vol-field"><label>Phone</label><input class="vol-input" id="re-phone" value="${esc(ref.phone || '')}"></div>
+    <div class="vol-field"><label>Email</label><input class="vol-input" id="re-email" type="email" value="${esc(r.referrer_email || ref.email || '')}"></div>
+    ${others ? `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Name, organisation and phone also change on this referrer's ${others} other referral${others > 1 ? 's' : ''}. The email changes on this referral and becomes their main address.</div>` : ''}
+    <div class="edit-actions">
+      <button class="btn-save-edit" onclick="saveReferrer(${r.id})">Save</button>
+      <button class="btn-cancel-edit" onclick="toggleEdit('referrer')">Cancel</button>
+    </div>`;
+}
+
+async function saveReferrer(id) {
+  const r = allReferrals.find(x => x.id === id);
+  if (!r?.referrer_id) { alert('This referral has no referrer record to edit.'); return; }
+  const val = k => document.getElementById('re-' + k)?.value.trim() ?? '';
+  const name = val('name'), email = val('email');
+  if (!name) { alert('The referrer needs a name.'); return; }
+  if (email && !looksLikeEmail(email)) { alert('"' + email + '" is not an email address.'); return; }
+  const { error } = await db.from('referrers').update({
+    name, organisation: val('org') || null, phone: normalisePhone(val('phone')),
+    ...(email ? { email } : {}),
+  }).eq('id', r.referrer_id);
+  if (error) { alert('Save failed: ' + error.message); return; }
+  editingSection = null;
+  await patchReferral(id, { referrer_email: email || null });
+  await loadReferrals();   // the referrer row is shared by their other referrals
 }
 
 // Word-level, like wlSamePerson_ in wishlist_ingest.gs: a respelling keeps a
@@ -4517,11 +4572,41 @@ function wishlistRequestEmail(r) {
   const url  = WISHLIST_FORM_URL + r.referral_number;
   const html = t => esc(t).replace(/\n/g, '<br>');
   return {
-    to: r.referrers?.email || '',
+    to: wishlistRequestAddresses(r)[0] || '',
     subject: `HH Referral - Client: ${name}, Ref: ${r.referral_number}`,
     body: `${WISHLIST_REQUEST_INTRO}\n\n${url}\n\n${WISHLIST_REQUEST_SIGNOFF}`,
     htmlBody: `${html(WISHLIST_REQUEST_INTRO)}<br><br><a href="${esc(url)}">HH Wishlist Form: Ref ${esc(r.referral_number)}</a><br><br>${html(WISHLIST_REQUEST_SIGNOFF)}`,
   };
+}
+
+// Every address this referral's referrer has given: this referral's own form
+// first, then the referrer's saved one, then their other referrals', newest
+// first. Real addresses only — #1760's referrer had typed her name in the
+// email box. Same list, same order, as wlRequestAddresses_ in DraftEmail.gs,
+// which refuses any address not on it. Ruled 18 Nov 2026: admin picks.
+const looksLikeEmail = s => /^[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}$/i.test(String(s || '').trim());
+function wishlistRequestAddresses(r) {
+  const others = allReferrals
+    .filter(x => r.referrer_id != null && x.referrer_id === r.referrer_id && x.referrer_email)
+    .sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')))
+    .map(x => x.referrer_email);
+  const out = [];
+  for (let e of [r.referrer_email, r.referrers?.email, ...others]) {
+    e = String(e || '').trim();
+    if (looksLikeEmail(e) && !out.some(x => x.toLowerCase() === e.toLowerCase())) out.push(e);
+  }
+  return out;
+}
+
+// Shown only when the referrer has given more than one address; this
+// referral's own is pre-ticked. Ticking several sends one email to all.
+function wishlistChooseToHtml(r) {
+  if (!choosingWlTo) return '';
+  const list = wishlistRequestAddresses(r);
+  return `<span class="wl-mark-sent">Send to:
+    ${list.map((e, i) => `<label><input type="checkbox" class="wl-to" value="${esc(e)}"${i ? '' : ' checked'}> ${esc(e)}</label>`).join('')}
+    <button class="btn" onclick="sendWishlistRequest(true)">Send</button>
+    <button class="btn-link" onclick="choosingWlTo = false; renderDetail(selectedRef)">Cancel</button></span>`;
 }
 
 // For wishlist links sent by hand before the button could send (before
@@ -4556,13 +4641,19 @@ async function markWishlistRequestSent() {
 // answers "unknown action" and this opens the same email in a Gmail compose
 // tab, where she presses Send herself; that cannot report back, so it is not
 // recorded as sent.
-async function sendWishlistRequest() {
+async function sendWishlistRequest(chosen) {
   const r = selectedRef; if (!r) return;
   const btn = document.getElementById('wishlist-link-btn');
   const mail = wishlistRequestEmail(r);
   if (!mail.to) { alert('This referrer has no email address on record.'); return; }
   const hasWebApp = typeof DRAFT_EMAIL_WEBAPP_URL !== 'undefined' && DRAFT_EMAIL_WEBAPP_URL;
-  if (hasWebApp && !confirm(`Send the wishlist email for #${r.referral_number} to ${mail.to}?`)) return;
+  // More than one address on record: tick boxes first, then send from them.
+  if (!chosen && hasWebApp && wishlistRequestAddresses(r).length > 1) {
+    choosingWlTo = true; renderDetail(r); return;
+  }
+  const to = chosen ? [...document.querySelectorAll('.wl-to:checked')].map(c => c.value) : [mail.to];
+  if (!to.length) { alert('Tick at least one address.'); return; }
+  if (hasWebApp && !confirm(`Send the wishlist email for #${r.referral_number} to ${to.join(' and ')}?`)) return;
   const compose = () => window.open('https://mail.google.com/mail/?view=cm&fs=1'
     + `&to=${encodeURIComponent(mail.to)}&su=${encodeURIComponent(mail.subject)}`
     + `&body=${encodeURIComponent(mail.body)}`, '_blank');   // plain text only: no htmlBody here
@@ -4573,7 +4664,7 @@ async function sendWishlistRequest() {
     const res = await fetch(DRAFT_EMAIL_WEBAPP_URL, {
       method: 'POST',
       body: JSON.stringify({ token: session.access_token, action: 'sendWishlistRequest',
-                             referral_number: r.referral_number,
+                             referral_number: r.referral_number, to,
                              subject: mail.subject, body: mail.body, htmlBody: mail.htmlBody }),
     });
     const out = await res.json();
@@ -4583,7 +4674,14 @@ async function sendWishlistRequest() {
     const { error } = await db.from('referrals').update({ wishlist_request_sent_at: ts }).eq('id', r.id);
     if (error) console.error('wishlist_request_sent_at stamp failed:', error);
     else r.wishlist_request_sent_at = ts;
+    choosingWlTo = false;
     renderDetail(r);
+    // A web app version older than 18 Nov 2026 ignores "to" and answers with
+    // the one address it used, as a string. Say so rather than let her think
+    // it went to everyone she ticked.
+    const went = [].concat(out.to || []);
+    if (went.length && to.some(e => !went.some(w => w.toLowerCase() === e.toLowerCase())))
+      alert(`Sent to ${went.join(', ')} only. To send to a chosen address, admin@ must publish a new version of the web app (Deploy → Manage deployments → edit → New version).`);
   } catch (e) {
     flashIconBtn(btn, ICONS.warn, 'Failed', ICONS.mail, 'Send wishlist email');
     alert('Wishlist email failed: ' + e.message);
