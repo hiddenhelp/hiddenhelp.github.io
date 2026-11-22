@@ -3029,7 +3029,10 @@ function filterReferrals() {
   });
   return filtered.sort((a, b) => {
     if (a.referral_number == null || b.referral_number == null) {
-      if (a.referral_number === b.referral_number) return 0;
+      if (a.referral_number === b.referral_number) {   // both unnumbered: by arrival, same arrow
+        const d = String(a.received_at || a.created_at).localeCompare(String(b.received_at || b.created_at));
+        return sortAscending ? d : -d;
+      }
       return a.referral_number == null ? -1 : 1;   // unnumbered first, both ways
     }
     const diff = a.referral_number - b.referral_number;
@@ -3199,9 +3202,9 @@ for (const axis of ['status', 'type']) {
       btn.classList.add('active');
       if (axis === 'status') {
         statusFilter = btn.dataset.status;
-        // Posted reads oldest first, so what has waited longest is on top
-        // (3 Nov 2026); every other stage newest first. The arrow still flips it.
-        sortAscending = statusFilter === 'posted';
+        // Posted and Untriaged read oldest first, so what has waited longest is
+        // on top (3 / 22 Nov 2026); every other stage newest first. The arrow still flips it.
+        sortAscending = statusFilter === 'posted' || statusFilter === 'untriaged';
         document.getElementById('sort-btn').textContent = sortAscending ? '↑' : '↓';
       }
       else typeFilter = btn.dataset.type;
