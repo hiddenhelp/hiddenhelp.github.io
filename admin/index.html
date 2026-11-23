@@ -1326,7 +1326,11 @@ document.getElementById('sign-out-btn').addEventListener('click', async () => {
 
 // ── Data ────────────────────────────────────────────────────
 async function loadReferrals() {
-  const { data, error } = await db
+  // Supabase answers at most 1000 rows a request, so page through: with one request the oldest
+  // referrals silently fell off the list (and the Reports tab) once there were more than 1000.
+  let data = [], error = null;
+  for (let from = 0; ; from += 1000) {
+    const page = await db
     .from('referrals')
     .select(`
       *,
@@ -1338,10 +1342,16 @@ async function loadReferrals() {
       gathered_vol:volunteers!gathered_by_id (name),
       delivered_vol:volunteers!delivered_by_id (name)
     `)
-    .order('referral_number', { ascending: false, nullsFirst: true });
+    .order('referral_number', { ascending: false, nullsFirst: true })
+    .order('id')   // a stable order, so pages neither overlap nor skip
+    .range(from, from + 999);
+    if (page.error) { error = page.error; break; }
+    data = data.concat(page.data || []);
+    if ((page.data || []).length < 1000) break;
+  }
 
   if (error) { console.error(error); return; }
-  allReferrals = data || [];
+  allReferrals = data;
   if (currentView === 'planner') renderPlanner();   // a correction made from the planner
   if (selectedRef) {
     const updated = allReferrals.find(x => x.id === selectedRef.id);
@@ -1890,7 +1900,8 @@ function renderReports() {
         ${rpBars(d.crisis, d.total)}</div>
       <div class="card"><div class="card-title">Where clients live</div>
         <div class="filter-row" style="margin-bottom:8px"><span class="pill-seg">${[['all', 'All'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([k, l]) =>
-          `<button class="pill${rpMapKind === k ? ' active' : ''}" onclick="rpMapKind='${k}';renderReports()">${l}</button>`).join('')}</span></div>
+          `<button class="pill${rpMapKind === k ? ' active' : ''}" onclick="rpMapKind='${k}';renderReports()">${l}</button>`).join('')}</span>
+          <label class="rp-sub" style="margin-left:12px"><input type="checkbox"${rpMapApprox ? ' checked' : ''} onchange="rpMapApprox=this.checked;renderReports()"> Include those placed by postcode district</label></div>
         <div class="rp-sub" id="rp-map-sub"></div>
         <div id="rp-map"></div></div>
     </div>`;
@@ -1898,9 +1909,13 @@ function renderReports() {
 }
 
 // One point per referral received in the range: completed, cancelled, or either ("all").
-// Open referrals are in neither. Duplicates never count; a pin-less client is counted apart.
-function rpMapPoints(refs, kind, from, to) {
-  const pts = []; let missing = 0;
+// Open referrals are in neither. Duplicates never count.
+// A client with no pin (nearly all collections) is placed by postcode district instead, when
+// `districts` (districts.json: district -> [[lat, lon], ...] outer ring) knows it: at a spot inside
+// that district seeded by the referral, so it lands in the same place every time and a district
+// never piles up on one false hot spot. Anything else is counted in `missing`.
+function rpMapPoints(refs, kind, from, to, districts) {
+  const pts = [], approx = []; let missing = 0;
   for (const r of refs) {
     if (r.duplicate_of) continue;
     const m = rpMonthOf(r.received_at || r.created_at);
@@ -1908,17 +1923,49 @@ function rpMapPoints(refs, kind, from, to) {
     const done = r.completed_at && !r.cancelled_at, gone = !!r.cancelled_at;
     if (kind === 'completed' ? !done : kind === 'cancelled' ? !gone : !(done || gone)) continue;
     const c = r.clients;
-    if (c?.latitude != null && c?.longitude != null) pts.push([+c.latitude, +c.longitude]); else missing++;
+    if (c?.latitude != null && c?.longitude != null) { pts.push([+c.latitude, +c.longitude]); continue; }
+    const ring = districts?.[rpDistrict(c?.postcode)];
+    if (ring) approx.push(rpPointIn(ring, r.id)); else missing++;
   }
-  return { pts, missing };
+  return { pts, approx, missing };
 }
 
-let rpMap = null, rpMapKind = 'all';
+// "TR15 2SE" -> TR15; "tr15" -> TR15; anything that is neither shape -> ''.
+function rpDistrict(pc) {
+  const s = String(pc || '').toUpperCase().replace(/\s+/g, '');
+  if (/^[A-Z]{1,2}\d[\dA-Z]?\d[A-Z]{2}$/.test(s)) return s.slice(0, -3);
+  return /^[A-Z]{1,2}\d[\dA-Z]?$/.test(s) ? s : '';
+}
+
+// A repeatable point inside the ring: a seeded random draw in its bounding box, kept once inside.
+function rpPointIn(ring, seed) {
+  let h = 2166136261;
+  for (const ch of String(seed)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const rand = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const lats = ring.map(p => p[0]), lons = ring.map(p => p[1]);
+  const [a, b, c, d] = [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
+  for (let i = 0; i < 200; i++) {
+    const p = [a + rand() * (b - a), c + rand() * (d - c)];
+    let inside = false;   // ray cast
+    for (let j = 0, k = ring.length - 1; j < ring.length; k = j++)
+      if ((ring[j][1] > p[1]) !== (ring[k][1] > p[1]) &&
+          p[0] < (ring[k][0] - ring[j][0]) * (p[1] - ring[j][1]) / (ring[k][1] - ring[j][1]) + ring[j][0]) inside = !inside;
+    if (inside) return p;
+  }
+  return [(a + b) / 2, (c + d) / 2];   // ponytail: a ring this thin never happens in the data
+}
+
+let rpMap = null, rpMapKind = 'all', rpMapApprox = true, rpDistricts = null;
 async function rpRenderMap() {
-  const { pts, missing } = rpMapPoints(allReferrals, rpMapKind, rpFrom, rpTo);
+  if (!rpDistricts) rpDistricts = await fetch('districts.json').then(r => r.json()).catch(() => ({}));
+  const { pts, approx, missing } = rpMapPoints(allReferrals, rpMapKind, rpFrom, rpTo, rpDistricts);
   const label = { all: 'completed or cancelled', completed: 'completed', cancelled: 'cancelled' }[rpMapKind];
-  document.getElementById('rp-map-sub').textContent = `${pts.length} ${label} referrals received in this range` +
-    (missing ? `, plus ${missing} with no address to map (nearly all collections)` : '') + '. Redder means more referrals.';
+  document.getElementById('rp-map-sub').textContent =
+    `${pts.length + approx.length} ${label} referrals received in this range: ${pts.length} at their address, ` +
+    `${approx.length} placed somewhere in their postcode district (nearly all collections)` +
+    (rpMapApprox ? '' : ', hidden now') +
+    (missing ? `. ${missing} more have no usable postcode` : '') + '. Redder means more referrals.';
   await planEnsureLeaflet();
   if (!L.heatLayer) await new Promise((resolve, reject) => {
     const js = document.createElement('script');
@@ -1934,7 +1981,7 @@ async function rpRenderMap() {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     { maxZoom: 18, attribution: '© OpenStreetMap contributors' }).addTo(rpMap);
   // ponytail: one sequential ramp, yellow to dark red; leaflet.heat's default is a rainbow.
-  L.heatLayer(pts, { radius: 16, blur: 18, max: 4, maxZoom: 10, minOpacity: .25,
+  L.heatLayer(rpMapApprox ? pts.concat(approx) : pts, { radius: 16, blur: 18, max: 4, maxZoom: 10, minOpacity: .25,
     gradient: { .2: '#fed976', .4: '#feb24c', .6: '#fd8d3c', .8: '#e31a1c', 1: '#800026' } }).addTo(rpMap);
 }
 
